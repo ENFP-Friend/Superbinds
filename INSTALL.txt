@@ -1,0 +1,33 @@
+SuperBinds 0.3.1: Form abilities filter
+
+1. Copy SuperBinds.lua and FormAbilities.lua into your existing SuperBinds addon folder.
+   Replace SuperBinds.lua. Keep your existing profiles, Media and other files.
+2. Open your existing SuperBinds.toc and append this line at the end:
+
+FormAbilities.lua
+
+   Ensure the line SuperBinds.lua remains earlier in the TOC.
+3. Restart WoW to ensure the updated TOC and new file are loaded.
+4. Open BIND > See All. The scope button cycles:
+   Form abilities > Castable now > All learned.
+
+Form abilities is a strict, curated membership list. In Bear Form it includes
+learned bear abilities such as Frenzied Regeneration, Growl, Mangle and Ironfur.
+It excludes form-switch buttons and caster spells that would shift you out.
+Cooldowns, insufficient resources and missing targets do not remove members.
+Cat, Moonkin and unshifted spellcasting have their own lists. Travel has no
+assigned abilities. General cross-form utility remains accessible in All learned.
+
+Castable now preserves the previous usability filter. All learned includes
+unclassified abilities, form switches and utility. Search and Unbound only work
+in all three modes. Binding behaviour and profile contents are unchanged.
+
+Classification lives in FormAbilities.lua, separate from the class-agnostic
+engine. New spells may need adding there; this is not an automatic discovery of
+all spell-form restrictions. Only spells present in your learned spellbook show.
+Profiles can override the catalogue with profile.formAbilities using the same
+form-spell-ID keys and lists of ability IDs. Spell overrides are matched too.
+
+Validation: local regression harness passed, including strict form membership,
+secret/unknown form handling, resource independence and existing binding tests.
+Not tested inside the live WoW client.

@@ -1,0 +1,108 @@
+-- Level-11 starter pack. Known() hides unlearned IDs. Manual forms only.
+SuperBinds.RegisterProfile({
+  name="Balance", class="DRUID", familyMode="balance", spec=102, default=false,
+  useBlizzardSBA=false, form="caster", nativeForm="moonkin",
+  appliedNote="Balance starter: E Wrath / Shred / Mangle by form. C bear  X travel  M4 cat. Not an endgame APL.",
+  forms={
+    cat={spells={768}}, bear={spells={5487}}, travel={spells={783}},
+    moonkin={spells={24858,197625}},
+  },
+  actionBars={
+    caster={page=1}, cat={bonus=1}, bear={bonus=3}, moonkin={bonus=4},
+    travel={page=1,use="caster"},
+  },
+  formAbilities={
+    caster={5176,194153,8921,339,8936,774,50769,1126,"Wrath","Starfire","Moonfire","Entangling Roots","Regrowth","Rejuvenation","Revive","Mark of the Wild"},
+    cat={5221,1822,1079,22568,213764,106830,22570,5215,1850,"Shred","Rake","Rip","Ferocious Bite","Swipe","Thrash","Maim","Prowl","Dash"},
+    bear={22842,6795,33917,6807,192081,77758,213771,"Frenzied Regeneration","Growl","Mangle","Maul","Ironfur","Thrash","Swipe"},
+    moonkin={5176,8921,8936,"Wrath","Moonfire","Regrowth"},
+    travel={},
+  },
+  neverSuggest={"Cat Form","Bear Form","Travel Form","Moonkin Form",768,5487,783,24858,197625},
+  neverBind={}, exclude={}, sculptures={},
+  rotation={
+    caster={
+      {spell={8921},auraMissing=true},
+      {spell={78674,197626}},
+      {spell={5176},fallback=true},
+    },
+    cat={
+      {spell={22568},powerType=4,minPower=5},
+      {spell={5221},fallback=true},
+    },
+    bear={
+      {spell={77758,106832}},
+      {spell={33917},fallback=true},
+    },
+    moonkin={
+      {spell={8921},auraMissing=true},
+      {spell={5176},fallback=true},
+    },
+    travel={},
+  },
+  families={
+    {tag="E",title="Attack · E",caption="ATTACK",
+      bars={
+        caster={slot=1,key="E",spell={5176},label="Wrath",target="harm"},
+        cat={slot=1,key="E",spell={5221},label="Shred",target="harm"},
+        bear={slot=1,key="E",spell={33917},label="Mangle",target="harm"},
+        moonkin={slot=1,key="E",spell={5176},label="Wrath",target="harm"},
+      },
+      items={
+        {spell={8921},label="Moonfire",bindKey="SHIFT-E",target="harm",form="caster"},
+        {spell={78674,197626},label="Starsurge",bindKey="CTRL-E",target="harm",form="caster"},
+        {spell={1822},label="Rake",bindKey="F",target="harm",form="cat"},
+        {spell={6807},label="Maul",bindKey="F",target="harm",form="bear"},
+      }},
+    {tag="Q",title="Control · Q",caption="CONTROL",
+      bars={
+        caster={slot=2,key="Q",spell={339},label="Entangling Roots",target="harm"},
+        cat={slot=2,key="Q",spell={5215},label="Prowl"},
+        bear={slot=2,key="Q",spell={6795},label="Growl"},
+        moonkin={slot=2,key="Q",spell={339},label="Entangling Roots",target="harm"},
+      },items={}},
+    {tag="C",title="Bear · C",caption="BEAR",
+      bar={slot=3,key="C",spell={5487},label="Bear Form",allBars=true},items={}},
+    {tag="X",title="Travel · X",caption="TRAVEL",
+      bar={slot=4,key="X",spell={783},label="Travel Form",allBars=true},items={}},
+    {tag="M5",title="Heal · M5",caption="HEAL",
+      bars={
+        caster={slot=8,key="BUTTON5",spell={8936},label="Regrowth",target="help"},
+        cat={slot=8,key="BUTTON5",spell={1850},label="Dash"},
+        bear={slot=8,key="BUTTON5",spell={22842},label="Frenzied Regeneration"},
+        moonkin={slot=8,key="BUTTON5",spell={8936},label="Regrowth",target="help"},
+      },
+      items={{spell={774},label="Rejuvenation",bindKey="SHIFT-BUTTON5",slot=9,target="help",form="caster"}}},
+    {tag="M4",title="Cat · M4",caption="CAT",
+      bar={slot=10,key="BUTTON4",spell={768},label="Cat Form",allBars=true},items={}},
+    {tag="BUF",title="Buffs",caption="BUFFS",
+      items={{spell={1126},label="Mark of the Wild"}}},
+    {tag="REC",title="Recover",caption="RECOVER",
+      items={{spell={50769},label="Revive"},{itemID=6948,label="Hearthstone"}}},
+  },
+  hardware={
+    BUTTON5={slot=8}, ["SHIFT-BUTTON5"]={slot=9}, BUTTON4={slot=10},
+  },
+  reserved={
+    ["CTRL-MOUSEWHEELUP"]="camera zoom in",["CTRL-MOUSEWHEELDOWN"]="camera zoom out",
+    NUMPADPLUS="camera zoom in",NUMPADMINUS="camera zoom out",
+  },
+  camera={
+    MOUSEWHEELUP="CAMERAZOOMIN",MOUSEWHEELDOWN="CAMERAZOOMOUT",
+    ["CTRL-MOUSEWHEELUP"]="CAMERAZOOMIN",["CTRL-MOUSEWHEELDOWN"]="CAMERAZOOMOUT",
+    NUMPADPLUS="CAMERAZOOMIN",NUMPADMINUS="CAMERAZOOMOUT",
+  },
+  macros={},
+  barBinds={E="ACTIONBUTTON1",Q="ACTIONBUTTON2",C="ACTIONBUTTON3",X="ACTIONBUTTON4",
+    BUTTON5="ACTIONBUTTON8",["SHIFT-BUTTON5"]="ACTIONBUTTON9",BUTTON4="ACTIONBUTTON10"},
+  theme={brass={.65,.51,.28},accent={.35,.65,.9},
+    endcap="Interface\\AddOns\\SuperBinds\\Media\\ShamanEndcap.tga",
+    endcapWidth=70,endcapHeight=120,
+    endcapHorde="Interface\\AddOns\\SuperBinds\\Media\\DruidEndcap_horde.tga",
+    endcapHordeWidth=90,endcapHordeHeight=120,
+    endcaps={
+      bear={path="Interface\\AddOns\\SuperBinds\\Media\\DruidEndcap_bear.tga",width=80,height=120,leftIn=26},
+      cat={path="Interface\\AddOns\\SuperBinds\\Media\\DruidEndcap_cat.tga",width=80,height=120,leftIn=26},
+      travel={path="Interface\\AddOns\\SuperBinds\\Media\\DruidEndcap_travel.tga",width=80,height=120,leftIn=26},
+    }},
+})

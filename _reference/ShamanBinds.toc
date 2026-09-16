@@ -1,0 +1,10 @@
+## Interface: 120007, 120100
+## Title: Shaman Binds
+## Notes: Compact Midnight shaman console: family tabs, totem crowns, assisted combat
+## Author: ENFP-Friend
+## Version: 8.34
+## X-Website: https://github.com/ENFP-Friend/ShamanBinds
+## SavedVariables: ShamanBindsDB
+## Category: User Interface
+
+ShamanBinds.lua

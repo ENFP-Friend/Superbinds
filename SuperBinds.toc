@@ -1,0 +1,12 @@
+## Interface: 120007, 120100
+## Title: Super Binds
+## Notes: Profile-driven action console. Native slots, same keys every form.
+## Author: ENFP-Friend
+## Version: 0.5.18
+## SavedVariables: SuperBindsDB
+## Category: User Interface
+
+SuperBinds.lua
+Profiles/Druid/Guardian.lua
+Profiles/Druid/Feral.lua
+Profiles/Druid/Balance.lua

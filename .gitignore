@@ -1,0 +1,37 @@
+# Editor / OS
+.DS_Store
+Thumbs.db
+Desktop.ini
+*.swp
+*~
+
+# Do not ship live WoW WTF from a future install
+WTF/
+bindings-cache.wtf
+Config.wtf
+
+# Old local backups (never copy these back in)
+New folder*/
+Backup/
+*.bak
+*- Copy.lua
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+
+# Secrets if any appear later
+.env
+.env.*
+credentials.json
+*.pem
+
+# Local restore packs and pre-change copies (not for GitHub)
+restore/
+restore/backups/
+
+# Workshop gens. Shipped crops are assets/DruidEndcap_{bear,cat,travel,horde}.png
+assets/DruidEndcap_*_ui_*.png
+assets/DruidEndcap_haranir_*.png
+assets/DruidEndcap_bear_v*.png
