@@ -27,7 +27,7 @@ These are why the console is shaped this way. Do not “simplify” them away.
 
 - **Main strip = vital verbs.** A short set of jobs you must reach without opening a drawer: interrupt / control, heal, attack, protect, move, travel, trinkets. Visible cooldown on the face.
 - **Modifiers = variants of that job.** Shift/Ctrl on the same family. Keep the console compact.
-- **Every ability the SBA does not handle needs a binding.** If it is not on the probe’s **SBA presses** list, it gets a `bindKey` (strip face, Shift/Ctrl, wheel, or another chord). **Recover is the only exception:** rez, hearth, Moonglade, and other Recover rows stay click-only — no bind. Shapeshifts still get the Forms-family keys even if SBA lists Bear Form.
+- **Every ability the SBA does not handle needs a binding.** If it is not on the probe’s **SBA presses** list, it gets a `bindKey` (strip face, Shift/Ctrl, wheel, or another chord). **Recover and World are the click-only exceptions:** rez / hearth / Moonglade stay Recover; non-combat General / system actives stay World — no bind. Shapeshifts still get the Forms-family keys even if SBA lists Bear Form.
 - **One family per hover.** Not a second action bar.
 - **Stay in form.** Same labeled keys every stance; the **native slot under the key** changes. Do not teach a second keymap. Do not ask Single-Button Assistant to play other forms for you.
 - **Slot is the truth.** The tab, the hotkey, and that form’s absolute slot are one object. Overlay (`formPrimary`) is a restock log after the slot changes.
@@ -117,7 +117,7 @@ Spellbook drop on a parent is `PlaceAction` on **this form’s** slot (no Shift)
 ## Checks before calling the pack done
 
 - Every keyed spell is in the probe actives (or is SBA on an explicit `sba=true` face).
-- Every probe active **not** on the SBA presses list has a `bindKey`, except Recover rows (click-only).
+- Every probe active **not** on the SBA presses list has a `bindKey`, except Recover and World rows (click-only).
 - Every probe racial active has a binding.
 - Family **captions** match this role/character, not a leftover shaman/druid strip.
 - Forms in `actionBars` / `forms` match probe shapeshifts. Ground travel may share caster slots; skyriding travel is bonus 5 and still uses the Forms-family keys.

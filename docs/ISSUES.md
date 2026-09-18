@@ -49,6 +49,17 @@ Skyriding / druid flight form is still Travel Form (`bonus=5`, abs ~121–132). 
 
 ---
 
+## Closed 2026-09-18 (0.5.83)
+
+| Check | Result |
+|---|---|
+| Elune Prime load | World flyout names no longer pass into `GetSpellInfo` (layout no longer aborts). |
+| BIND on Q | Rebinding the strip face does not PlaceAction the same spell (slot stays filled). |
+| BIND drawer → Q | Extra and face **swap**. Old face moves into that drawer. |
+| BIND board | Narrow columns above each family tab (odd/even rows). |
+
+---
+
 ## Known errors (live)
 
 | Status | What | Evidence / notes |

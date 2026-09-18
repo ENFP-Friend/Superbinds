@@ -1,6 +1,6 @@
 # SuperBinds notes
 
-Snapshot: **0.5.82** (18 Sep 2026). `/superbinds probe` copy window is spellbook plus live keys/slots. Elune's Chosen rewritten from the 15:43:06 probe (Haranir racials, Raze, no Moonkin). Skyriding flight form keeps the console (E / Q / 1 / 2 / C plus Forms wheel). Shipping addon is this folder, junctioned to `_retail_\Interface\AddOns\SuperBinds`. Live **Shaman Binds** stays a separate addon — do not edit its GUI or junction. **DruidAssistant** is an unused sidecar; BIND, bars, and endcaps do not live there.
+Snapshot: **0.5.83** (18 Sep 2026). `/superbinds probe` copy window is spellbook plus live keys/slots. **Elune Prime** is the default Guardian + Elune tree 24 pack (Thorn/Rootwalking on Attack, SBA on bear E, World click-only). Elune's Chosen remains the previous Elune strip. Skyriding flight form keeps the console (E / Q / 1 / 2 / C plus Forms wheel). Shipping addon is this folder, junctioned to `_retail_\Interface\AddOns\SuperBinds`. Live **Shaman Binds** stays a separate addon — do not edit its GUI or junction. **DruidAssistant** is an unused sidecar; BIND, bars, and endcaps do not live there.
 
 Product overview: [`../README.md`](../README.md). **Probe → pack:** [`PROFILE-GUIDE.md`](PROFILE-GUIDE.md). Schema: [`PROFILE-SCHEMA.md`](PROFILE-SCHEMA.md). Art: [`ART.md`](ART.md). Shots: [`SHOTS.md`](SHOTS.md). **Known errors + owed rework:** [`ISSUES.md`](ISSUES.md).
 
@@ -35,20 +35,21 @@ Keyboard combat faces follow the stance page. Forms wheel casts the shapeshift s
 
 ## Packs in the TOC
 
-`SuperBinds.toc` loads Guardian, Elune's Chosen, Feral, then Balance.
+`SuperBinds.toc` loads Guardian, Elune's Chosen, Elune Prime, Feral, then Balance.
 
-- **Elune's Chosen** (`spec=104`, `hero=24`, `nativeForm=bear`, default) — same strip as Guardian; bear **R** is Lunar Beam (204066). Loads when the Elune hero tree is active.
+- **Elune Prime** (`spec=104`, `hero=24`, `nativeForm=bear`, default) — probe binding map: Thorn/Rootwalking on Attack, SBA on bear E, World click-only. Loads when the Elune hero tree is active.
+- **Elune's Chosen** (`spec=104`, `hero=24`, `nativeForm=bear`) — previous Elune strip (Thorn on Shift-wheel-up). `/superbinds load Elune's Chosen`.
 - **Guardian** (`spec=104`, no `hero`, `nativeForm=bear`) — previous bear kit. Fallback when Elune is not the hero tree. `/superbinds load Guardian`.
 - **Feral** (`spec=103`, `nativeForm=cat`) — auto-follows Feral spec. E is SBA in cat.
 - **Balance** (`spec=102`, `nativeForm=moonkin`) — starter, not an endgame APL.
 
 Strip: E attack · Q disrupt · M5 heal · T forms/wheel · M4 move · C protect · R empower · X travel · BUF · +.
 
-Elune / Guardian / Feral wheel: up Bear, down Cat, shift-up **Thorn Bloom**, shift-down Travel. Balance still uses Moonkin on a pack key. Ctrl-wheel stays camera.
+Elune / Guardian / Feral wheel: up Bear, down Cat, shift-down Travel. **Elune Prime** Thorn Bloom is **Shift-E** (Attack). Elune's Chosen still uses shift-up Thorn Bloom. Balance still uses Moonkin on a pack key. Ctrl-wheel stays camera.
 
 Skyriding (bonus 5): **E** Surge Forward, **Q** Second Wind, **C** Whirling Surge, **1** Aerial Halt, **2** Skyward Ascent. Forms wheel does not change. Aerial Halt is never a Forms face.
 
-Live character: Horde Haranir Guardian, Elune's Chosen.
+Live character: Horde Haranir Guardian, Elune Prime.
 
 ## Endcaps (form GUI)
 
@@ -59,6 +60,13 @@ Live: bear `batC`, cat v6 **B**, travel C, Horde wyvern v4 B. Alliance owl lefto
 ## BIND / bars (engine)
 
 Unified bar: hotkey label, ability, and native slot stay one object. Keyboard faces are `ACTIONBUTTON` 1–12.
+
+BIND (0.5.83):
+
+- Rebinding a strip face does **not** PlaceAction the same spell onto its slot (WoW toggles it off → empty Q).
+- BIND a drawer extra to a key that belongs to a strip face **swaps**: extra → face, face → that drawer (old extra chord follows the displaced face).
+- BIND drawers are **narrow** (width follows the name) and sit **above their own tab**, odd/even rows so neighbors do not pile into one grid.
+- `Known()` must not call `C_Spell.GetSpellInfo` with flyout / junk names — that aborted Elune Prime on reload (`Layout update failed`).
 
 Fixes already in the engine (not Druid-hardcoded):
 
@@ -97,6 +105,6 @@ Art only here. Engine owed work: [`ISSUES.md`](ISSUES.md).
 
 ## Commands
 
-`/superbinds` apply; `load Elune's Chosen|Guardian|Feral|Balance`; `save`; `list`; `bind`; `options`; `keys`. `/keymap` field guide.
+`/superbinds` apply; `load Elune Prime|Elune's Chosen|Guardian|Feral|Balance`; `save`; `list`; `bind`; `options`; `keys`. `/keymap` field guide.
 
 Disable **Shaman Binds** on this character so both addons do not own keys and slots.

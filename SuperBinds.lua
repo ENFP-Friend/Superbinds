@@ -1,4 +1,4 @@
--- Super Binds 0.5.82 — class-agnostic port of the Shaman Binds 8.34 engine.
+-- Super Binds 0.5.83 — class-agnostic port of the Shaman Binds 8.34 engine.
 -- Packs live in Profiles/. Engine: native ACTIONBUTTON faces, BIND, drawers, shimmer.
 SuperBindsDB = type(SuperBindsDB) == "table" and SuperBindsDB or {}
 
@@ -113,7 +113,8 @@ function P.PackForPlayerSpec()
     for _, pack in pairs(P.Packs) do
       if P.PackMatches(pack) and pack.spec == specID then
         if heroID and pack.hero == heroID then
-          exact = exact or pack
+          if pack.default then exact = pack
+          else exact = exact or pack end
         elseif not pack.hero then
           generic = generic or pack
         end
@@ -1371,7 +1372,10 @@ end
 -- ============================== SPELLBOOK ==============================
 
 local function SpellName(id)
-  return (C_Spell and C_Spell.GetSpellName and C_Spell.GetSpellName(id)) or tostring(id)
+  if type(id) == "string" and id ~= "" then return id end
+  if type(id) ~= "number" or id <= 0 then return nil end
+  local nm = P.Read(C_Spell and C_Spell.GetSpellName, id)
+  return P.Text(nm)
 end
 
 -- name -> spellID for every active, known, non-passive spell in the book.
@@ -1444,23 +1448,39 @@ function P.UsesActionOverride(name)
 end
 
 function Known(...)
+  local function spellInfo(ident)
+    if type(ident) == "number" then
+      if ident <= 0 then return nil end
+    elseif type(ident) ~= "string" or ident == "" then
+      return nil
+    end
+    local info = P.Read(C_Spell and C_Spell.GetSpellInfo, ident)
+    return type(info) == "table" and info or nil
+  end
   for i = 1, select("#", ...) do
     local want = select(i, ...)
-    if type(want) == "number" then
+    if type(want) == "number" and want > 0 then
       local nm = SpellName(want)
+      if not nm then
+        local info = spellInfo(want)
+        nm = info and P.Text(info.name)
+      end
       if nm and (P.PlayerKnows(want) or BOOK[nm]) then return nm, want end
-    elseif want and BOOK[want] then
+    elseif type(want) == "string" and want ~= "" and BOOK[want] then
       return want, BOOK[want]
     end
   end
   for i = 1, select("#", ...) do
     local name = select(i, ...)
-    local id = name and P.SPELL_ID[name]
-    if id and P.PlayerKnows(id) then return name, id end
-    if name and C_Spell and C_Spell.GetSpellInfo then
-      local info = C_Spell.GetSpellInfo(name)
-      local id2 = type(info) == "table" and info.spellID or nil
-      if id2 and P.PlayerKnows(id2) then return (info.name or name), id2 end
+    if type(name) == "string" and name ~= "" then
+      local id = P.SPELL_ID[name]
+      if id and P.PlayerKnows(id) then return name, id end
+    end
+    local info = spellInfo(name)
+    if info then
+      local id2 = P.ID(info.spellID)
+      local nm = P.Text(info.name) or (type(name) == "string" and name) or nil
+      if id2 and nm and P.PlayerKnows(id2) then return nm, id2 end
     end
   end
   for i = 1, select("#", ...) do
@@ -1476,8 +1496,9 @@ function Known(...)
 end
 
 local function SpellIcon(id, name)
-  if id and C_Spell and C_Spell.GetSpellTexture then
-    local tex = C_Spell.GetSpellTexture(id)
+  id = P.ID(id)
+  if id then
+    local tex = P.Read(C_Spell and C_Spell.GetSpellTexture, id)
     if tex and tex ~= 0 and tex ~= 134400 then return tex end
   end
   if name and P.SPELL_ICON[name] then return P.SPELL_ICON[name] end
@@ -3718,13 +3739,141 @@ local function SetQKBCastSafe(on)
   for _, b in ipairs(allMenuButtons) do arm(b) end
 end
 
--- Hover drawers pin to their tab. BIND opens every drawer at once, so
--- spread them into a wrapping row above the console instead of stacking.
+-- Hover drawers pin to their tab. BIND opens every drawer: shrink each to
+-- its label and keep it above its own family. Odd/even tabs sit on two
+-- rows so ~100px columns do not sit on top of 54px-spaced neighbors.
 function P.LayoutBindMenus(on)
   if Locked() or not console then return end
+  local function shownButtons(menu)
+    local list = {}
+    for _, b in ipairs(menu.buttons or {}) do
+      if b:IsShown() then list[#list + 1] = b end
+    end
+    return list
+  end
+  local function textW(fs)
+    if not fs then return 0 end
+    local t = fs.GetText and fs:GetText()
+    if not t or t == "" then return 0 end
+    local prev = fs.GetWidth and fs:GetWidth()
+    if fs.SetWidth then fs:SetWidth(360) end
+    local w = fs.GetStringWidth and fs:GetStringWidth() or 0
+    if prev and fs.SetWidth then fs:SetWidth(prev) end
+    return w
+  end
+  local function restore(menu)
+    if not menu or not menu._sbBindCompact then return end
+    menu._sbBindCompact = nil
+    local list = shownButtons(menu)
+    local n = #list
+    local cols = (n > 7) and 2 or 1
+    local pad, header = P.Visual.menuPad, P.Visual.menuHeader
+    local rowW, rowH = P.Visual.rowWidth, P.Visual.rowHeight
+    for i, b in ipairs(list) do
+      local col = (i - 1) % cols
+      local row = math.floor((i - 1) / cols)
+      b:SetSize(rowW, rowH)
+      b:ClearAllPoints()
+      b:SetPoint("BOTTOMLEFT", menu, "BOTTOMLEFT",
+        pad + col * (rowW + GAP), pad + row * (rowH + GAP))
+      if b.icon then
+        b.icon:ClearAllPoints()
+        b.icon:SetPoint("LEFT", 5, 0)
+        b.icon:SetSize(36, 36)
+      end
+      if b._sbVisualLabel then
+        b._sbVisualLabel:ClearAllPoints()
+        b._sbVisualLabel:SetPoint("TOPLEFT", 50, -8)
+        b._sbVisualLabel:SetWidth(rowW - 60)
+        b._sbVisualLabel:SetHeight(15)
+        P.VisualFont(b._sbVisualLabel, 11, P.Visual.text)
+      end
+      if b.keyText then
+        b.keyText:ClearAllPoints()
+        b.keyText:SetPoint("BOTTOMLEFT", 50, 7)
+        b.keyText:SetWidth(150)
+        P.VisualFont(b.keyText, 10, P.Visual.teal)
+      end
+    end
+    if menu._sbVisualTitle then
+      menu._sbVisualTitle:ClearAllPoints()
+      menu._sbVisualTitle:SetPoint("TOPLEFT", 12, -11)
+    end
+    if menu._sbVisualCount then menu._sbVisualCount:Show() end
+    if menu._sbVisualRule then menu._sbVisualRule:Show() end
+    if n == 0 then
+      menu:SetSize(1, 1)
+      menu._sbW, menu._sbH = 1, 1
+      return
+    end
+    local colsUsed = math.min(n, cols)
+    local rows = math.ceil(n / cols)
+    local mw = pad * 2 + colsUsed * rowW + (colsUsed - 1) * GAP
+    local mh = pad * 2 + rows * rowH + (rows - 1) * GAP + header
+    menu:SetSize(mw, mh)
+    menu._sbW, menu._sbH = mw, mh
+  end
+  local function compact(menu)
+    local list = shownButtons(menu)
+    local n = #list
+    if n == 0 then
+      menu:SetSize(1, 1)
+      menu._sbW, menu._sbH = 1, 1
+      return
+    end
+    local need = 40
+    for _, b in ipairs(list) do
+      need = math.max(need, textW(b._sbVisualLabel), textW(b.keyText))
+    end
+    if menu._sbVisualTitle then
+      need = math.max(need, (textW(menu._sbVisualTitle) or 0) - 10)
+    end
+    local cap = (TAB_W + TAB_GAP) * 2 - 8
+    local pad, rowH, header, gap = 5, 30, 18, 2
+    local rowW = math.floor(34 + need + 8)
+    if rowW < 88 then rowW = 88 end
+    if rowW > cap then rowW = cap end
+    for i, b in ipairs(list) do
+      b:SetSize(rowW, rowH)
+      b:ClearAllPoints()
+      b:SetPoint("BOTTOMLEFT", menu, "BOTTOMLEFT", pad, pad + (i - 1) * (rowH + gap))
+      if b.icon then
+        b.icon:ClearAllPoints()
+        b.icon:SetPoint("LEFT", 4, 0)
+        b.icon:SetSize(22, 22)
+      end
+      if b._sbVisualLabel then
+        b._sbVisualLabel:ClearAllPoints()
+        b._sbVisualLabel:SetPoint("TOPLEFT", 30, -3)
+        b._sbVisualLabel:SetWidth(rowW - 36)
+        b._sbVisualLabel:SetHeight(12)
+        P.VisualFont(b._sbVisualLabel, 10, P.Visual.text)
+      end
+      if b.keyText then
+        b.keyText:ClearAllPoints()
+        b.keyText:SetPoint("BOTTOMLEFT", 30, 3)
+        b.keyText:SetWidth(rowW - 36)
+        P.VisualFont(b.keyText, 9, P.Visual.teal)
+      end
+      if b._sbClickHint then b._sbClickHint:Hide() end
+    end
+    if menu._sbVisualTitle then
+      menu._sbVisualTitle:ClearAllPoints()
+      menu._sbVisualTitle:SetPoint("TOPLEFT", 6, -4)
+      menu._sbVisualTitle:SetWidth(rowW - 8)
+    end
+    if menu._sbVisualCount then menu._sbVisualCount:Hide() end
+    if menu._sbVisualRule then menu._sbVisualRule:Hide() end
+    local mw = pad * 2 + rowW
+    local mh = pad * 2 + n * rowH + (n - 1) * gap + header
+    menu:SetSize(mw, mh)
+    menu._sbW, menu._sbH = mw, mh
+    menu._sbBindCompact = true
+  end
   if not on then
     P._sbBindBoardTop = nil
     for i, menu in pairs(menus) do
+      restore(menu)
       local tab = consoleTabs[i]
       if menu and tab then
         menu:ClearAllPoints()
@@ -3733,48 +3882,30 @@ function P.LayoutBindMenus(on)
     end
     return
   end
-  local items = {}
-  local idxs = {}
-  for i in pairs(menus) do idxs[#idxs + 1] = i end
-  table.sort(idxs)
-  for _, i in ipairs(idxs) do
-    local menu = menus[i]
-    local w, h = menu and menu._sbW, menu and menu._sbH
-    if (not w or not h) and menu and menu.GetWidth then
-      w, h = menu:GetWidth(), menu:GetHeight()
-    end
-    if menu and P.Number(w) and P.Number(h) and w > 8 and h > 8 then
-      items[#items + 1] = { menu = menu, w = w, h = h }
+  local lowH = 0
+  for i, menu in pairs(menus) do
+    local tab = consoleTabs[i]
+    if menu and tab and tab:IsShown() then
       menu:Show()
+      compact(menu)
+      if menu._sbW and menu._sbW > 8 and (i % 2 == 0) then
+        if (menu._sbH or 0) > lowH then lowH = menu._sbH end
+      end
     end
   end
-  local gap, maxW = 8, 1000
-  local rows, row, rowW, rowH = {}, {}, 0, 0
-  local function flush()
-    if #row == 0 then return end
-    rows[#rows + 1] = { items = row, w = rowW - gap, h = rowH }
-    row, rowW, rowH = {}, 0, 0
-  end
-  for _, it in ipairs(items) do
-    if #row > 0 and rowW + it.w > maxW then flush() end
-    row[#row + 1] = it
-    rowW = rowW + it.w + gap
-    if it.h > rowH then rowH = it.h end
-  end
-  flush()
-  local cw = console:GetWidth()
-  if not P.Number(cw) then cw = 400 end
-  local y = 12
-  for _, band in ipairs(rows) do
-    local x = (cw - band.w) / 2
-    for _, it in ipairs(band.items) do
-      it.menu:ClearAllPoints()
-      it.menu:SetPoint("BOTTOMLEFT", console, "TOPLEFT", x, y)
-      x = x + it.w + gap
+  local highLift = 4 + lowH + 6
+  local top = 0
+  for i, menu in pairs(menus) do
+    local tab = consoleTabs[i]
+    if menu and tab and tab:IsShown() and menu._sbW and menu._sbW > 8 then
+      local lift = (i % 2 == 0) and 4 or highLift
+      menu:ClearAllPoints()
+      menu:SetPoint("BOTTOM", tab, "TOP", 0, lift)
+      local h = lift + (menu._sbH or 0)
+      if h > top then top = h end
     end
-    y = y + band.h + gap
   end
-  P._sbBindBoardTop = y
+  P._sbBindBoardTop = top
 end
 
 local function OnQuickKeybindMode(on)
@@ -7465,59 +7596,115 @@ function P.ClearFamilySpellBinds(tag, ability, onlyKey)
   end
 end
 
+-- Which native column currently owns this hotkey (Q, E, M4, …).
+-- Drawer extras that already have the chord are not bar owners.
+function P.BarFaceForKey(key)
+  if not P.Text(key) then return nil end
+  local slot
+  local act = GetBindingAction and GetBindingAction(key)
+  if type(act) == "string" then
+    slot = tonumber(act:match("^ACTIONBUTTON(%d+)$"))
+  end
+  if not slot then
+    for action, saved in pairs(SuperBindsDB.barBinds or {}) do
+      if saved == key then
+        slot = tonumber(tostring(action):match("ACTIONBUTTON(%d+)"))
+        if slot then break end
+      end
+    end
+  end
+  if not slot then
+    local cmd = BAR_BINDS[key]
+    if type(cmd) == "string" then
+      slot = tonumber(cmd:match("ACTIONBUTTON(%d+)"))
+    end
+  end
+  for _, tab in ipairs(consoleTabs) do
+    local tabSlot = P.BarSlotOf(tab)
+    if tabSlot and (tabSlot == slot or P.LiveFaceKey(tab) == key or tab._sbDefaultKey == key) then
+      return tab, tabSlot, tab.famTag, tab._ability
+    end
+  end
+end
+
 function P.ResolveBarBind(frame, key)
-  local tag = frame and frame.famTag
-  if not P.Text(tag) or not P.FamilyHasBars(tag) then return end
-  local spec = P.FamilyBarSpec(tag)
-  local slot = spec and tonumber(spec.slot)
-  if not slot or slot < 1 or slot > 12 then return end
-  local barId = "bar:" .. slot
-  local actionCmd = "ACTIONBUTTON" .. slot
-  local isBarFace = P.BarSlotOf(frame) == slot
+  if not frame then return end
   local ability = NormalizeAbility and NormalizeAbility(frame._ability) or frame._ability
-  local extraKey = frame._sbBindKey or frame._sbDefaultKey
-  local columnKey = spec.bindKey or spec.key
-  -- Column face, or BIND the column's own key on a drawer extra (make it
-  -- the parent). A new extra has no extraKey — that must not steal the
-  -- family slot or whoever currently owns the pressed key.
-  local promote = isBarFace
-    or (P.Text(key) and P.Text(columnKey) and key == columnKey)
-  if P.IsMouseKey(key) then
-    if slot then return barId, "ACTIONBUTTON" .. slot end
-    local cmd = P.PaintedSpellCommand(frame)
-    if P.Text(cmd) then return frame._sbBindId, cmd end
+  local slot = P.BarSlotOf(frame)
+  local extraKey = EffectiveKey(frame._sbBindId, frame._sbDefaultKey) or frame._sbBindKey
+
+  -- Hovering the strip face: rebind ACTIONBUTTON only. Do not PlaceAction
+  -- (same spell on its own slot toggles it off).
+  if slot then
+    P.ClearFamilySpellBinds(frame.famTag, ability)
+    if P.IsMouseKey(key) then
+      local cmd = P.PaintedSpellCommand(frame)
+      if P.Text(cmd) then return "bar:" .. slot, "ACTIONBUTTON" .. slot end
+    end
+    return "bar:" .. slot, "ACTIONBUTTON" .. slot
+  end
+
+  if not P.Text(key) or not ability then
+    P.ClearFamilySpellBinds(frame.famTag, ability, extraKey)
     return
   end
-  if P.Text(key) then
-    if not promote then return end
-    if ability and not isBarFace then
-      local prev = P.CustomPrimaryFor and P.CustomPrimaryFor(tag)
-      if not prev then
-        local i
-        for i = 1, #(consoleTabs or {}) do
-          local tab = consoleTabs[i]
-          if tab and tab.famTag == tag and tab._ability then
-            prev = tab._ability
-            break
-          end
+
+  -- Another drawer extra already owns this chord: ordinary extra rebind.
+  local function drawerOwns()
+    for _, b in ipairs(allMenuButtons) do
+      if b ~= frame and b._ability and not P.BarSlotOf(b) then
+        local ek = EffectiveKey(b._sbBindId, b._sbDefaultKey) or b._sbBindKey
+        if ek == key then return true end
+      end
+    end
+  end
+  if drawerOwns() then return end
+
+  local tab, barSlot, barTag, prev = P.BarFaceForKey(key)
+  if not (tab and barSlot and P.Text(barTag)) then return end
+  if P.IsEmptyPrimary and P.IsEmptyPrimary(prev) then prev = nil end
+  prev = prev and (NormalizeAbility(prev) or prev) or nil
+  if prev and SameAbility(prev, ability) then
+    P.ClearFamilySpellBinds(barTag, ability)
+    return "bar:" .. barSlot, "ACTIONBUTTON" .. barSlot
+  end
+
+  -- Drawer extra taking a strip key: extra → face, face → this drawer.
+  local extraTag = frame.famTag
+  SetCustomPrimary(barTag, ability, true)
+  if P.Text(extraTag) then RemoveExtra(extraTag, ability, true) end
+  if extraTag ~= barTag then RemoveExtra(barTag, ability, true) end
+  if extraKey == key then extraKey = nil end
+  if prev and P.Text(extraTag) then
+    AddExtra(extraTag, prev, true)
+    if extraKey then
+      local c = EnsureCustom(extraTag)
+      for i = #c.added, 1, -1 do
+        if SameAbility(c.added[i], prev) then
+          c.added[i].bindKey = extraKey
+          break
         end
       end
-      SetCustomPrimary(tag, ability, true)
-      if prev and not SameAbility(prev, ability) then AddExtra(tag, prev, true) end
-      P._bindPromoted = true
+      SuperBindsDB.mods = SuperBindsDB.mods or {}
+      SuperBindsDB.mods[extraKey] = NormalizeAbility(prev) or prev
     end
-    if ability then
-      local abs = P.ActionSlot(slot, PackFormNow())
-      if abs then PlacePrimaryOnBar(abs, ability) end
-    end
-    P.ClearFamilySpellBinds(tag, ability)
-    return barId, actionCmd
   end
-  if isBarFace then
-    P.ClearFamilySpellBinds(tag, ability)
-    return barId, actionCmd
+  local abs = (P.LiveActionSlot and P.LiveActionSlot(barSlot)) or P.ActionSlot(barSlot, PackFormNow())
+  local native = abs and P.NativeAbility and P.NativeAbility(abs)
+  if abs and not (native and SameAbility(native, ability)) then
+    PlacePrimaryOnBar(abs, ability)
   end
-  P.ClearFamilySpellBinds(tag, ability, extraKey)
+  P._bindPromoted = true
+  P.ClearFamilySpellBinds(barTag, ability)
+  if extraKey then P.ClearFamilySpellBinds(extraTag, prev, extraKey) end
+  local into = (P.Visual.families and P.Visual.families[barTag]) or barTag
+  local newName = ability.label or ability.name or "Ability"
+  if prev then
+    P.Report(newName .. " on " .. into .. " · " .. (prev.label or prev.name or "Ability") .. " moved to the family")
+  else
+    P.Report(newName .. " on " .. into)
+  end
+  return "bar:" .. barSlot, "ACTIONBUTTON" .. barSlot
 end
 
 function P.AbilityIsFamilyBarSpell(tag, ability)
@@ -10187,6 +10374,7 @@ local function BuildEverything(bindNow)
         -- Explicit user additions may live in more than one family. The global
         -- coverage table is only for auto-fill; DedupResolved handles this drawer.
         if copy then
+          copy.bindKey = a.bindKey or copy.bindKey
           resolved[#resolved + 1] = RouteToHiddenSlot(AttachBindMeta(copy), bindNow)
         end
       end
@@ -10395,8 +10583,8 @@ local function BuildEverything(bindNow)
     for _, r in ipairs(resolved) do
       if primaryBindKey and r.bindKey == primaryBindKey then
         -- tab slot
-      elseif primary and SameAbility(r, primary) and not r.bindKey then
-        -- unkeyed copy of the tab face
+      elseif primary and SameAbility(r, primary) then
+        -- this spell is the face now (BIND swap); do not keep it in the drawer
       else
         extras[#extras + 1] = r
       end
@@ -10830,6 +11018,11 @@ function RefreshLayout(automatic)
     P.RebuildOverrideList()
     P.FlushOverrides()
     P.RestoreChatKeys()
+    if InQuickKeybind and InQuickKeybind() then
+      if HoldMenus then HoldMenus(true) end
+      for _, menu in pairs(menus) do menu:Show() end
+      if P.LayoutBindMenus then P.LayoutBindMenus(true) end
+    end
   end)
   busy = false
   if not ok then P.Report("Layout update failed: " .. tostring(err)) end
@@ -11453,7 +11646,7 @@ SLASH_SBKEYMAP1 = "/keymap"
 SLASH_SBKEYMAP2 = "/km"
 SlashCmdList.SBKEYMAP = P.ToggleKeymap
 
-print("|cff0070ddSuper Binds:|r 0.5.82 loaded. |cffffffff/superbinds load Elune's Chosen|r, |cffffffffGuardian|r, |cffffffffFeral|r, or |cffffffffBalance|r. |cffffffff/superbinds keys|r for reserved chords.")
+print("|cff0070ddSuper Binds:|r 0.5.83 loaded. |cffffffff/superbinds load Elune Prime|r, |cffffffffElune's Chosen|r, |cffffffffGuardian|r, |cffffffffFeral|r, or |cffffffffBalance|r. |cffffffff/superbinds keys|r for reserved chords.")
 pcall(function() P.RegisterSettings() end)
 
 SuperBinds = P

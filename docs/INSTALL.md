@@ -1,4 +1,4 @@
-# SuperBinds 0.5.82
+# SuperBinds 0.5.83
 
 Repo folder: `C:\Users\Nick\Documents\Websites\SuperBinds`
 
@@ -23,13 +23,13 @@ Do not nest another `SuperBinds` folder inside this project. No extra Media down
 
 Disable **Shaman Binds** on this character so both addons do not own `/sbinds`, `/keymap`, keys, and native action slots. Leave Shaman Binds installed for other characters.
 
-Then `/reload`. Chat should print `Super Binds: 0.5.82 loaded.` Out of combat and dismounted, spec follow should pick **Elune's Chosen** on a Guardian with hero tree 24, or **Guardian** / **Feral** / **Balance** by spec. Force with:
+Then `/reload`. Chat should print `Super Binds: 0.5.83 loaded.` Out of combat and dismounted, spec follow should pick **Elune Prime** on a Guardian with hero tree 24, or **Guardian** / **Feral** / **Balance** by spec. Force with:
 
 ```
-/superbinds load Elune's Chosen
+/superbinds load Elune Prime
 ```
 
-Also `load Guardian` (previous bear kit), `load Feral`, `load Balance`.
+Also `load Elune's Chosen` (previous Elune strip), `load Guardian` (previous bear kit), `load Feral`, `load Balance`.
 
 Apply **PlaceID**s learned spells onto **each form’s bar** (caster page 1, cat bonus 1, bear bonus 3, moonkin bonus 4). The same hotkeys (`ACTIONBUTTON` 1–12, plus pack mouse/wheel) fire whichever page is showing. Unknown spells do not get buttons. Reloads rebuild the console without Pickup/Place.
 
@@ -57,7 +57,7 @@ When combat data is secret, the engine skips conditions it cannot establish and 
 
 ## Commands
 
-`/superbinds` apply and keymap; `load Elune's Chosen|Guardian|Feral|Balance`; `save My setup`; `load My setup`; `list`; `delete My setup`; `default`; `bind`; `map`; `options`; `keys`; `hide`; `show`. `/keymap` opens the field guide. Alias `/sbinds`.
+`/superbinds` apply and keymap; `load Elune Prime|Elune's Chosen|Guardian|Feral|Balance`; `save My setup`; `load My setup`; `list`; `delete My setup`; `default`; `bind`; `map`; `options`; `keys`; `hide`; `show`. `/keymap` opens the field guide. Alias `/sbinds`.
 
 Custom saves store an overlay plus their base pack name. Shipped tables are not overwritten. Custom parents are per-form (`formPrimary`).
 

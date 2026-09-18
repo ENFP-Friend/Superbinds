@@ -1,18 +1,18 @@
 # Super Binds
 
-Class-agnostic Midnight action console, ported from Shaman Binds. **0.5.82**.
+Class-agnostic Midnight action console, ported from Shaman Binds. **0.5.83**.
 
 Repo: [github.com/ENFP-Friend/Superbinds](https://github.com/ENFP-Friend/Superbinds)
 
 Layouts are **profile data** — the engine has no class spells. The product is one compact bar whose **hotkey, label, and native slot stay one object**, with a **separate action bar per form** and the **same keys on every stance**.
 
-Current TOC packs: **Elune's Chosen** (Guardian + hero tree 24, default), **Guardian** (fallback), **Feral**, **Balance**.
+Current TOC packs: **Elune Prime** (Guardian + hero tree 24, default), **Elune's Chosen** (previous Elune strip), **Guardian** (fallback), **Feral**, **Balance**.
 
 ## Horde vs Alliance default bar
 
 Unshifted endcaps follow faction. **Horde** uses the wind rider; **Alliance** uses the owl (the same sculpture as [Shaman Binds](https://github.com/ENFP-Friend/ShamanBinds)). Shapeshift still swaps to the animal busts.
 
-**Horde** — wind-rider endcaps.
+**Horde** — Elune Prime, wind-rider endcaps.
 
 ![Horde default bar — wind-rider endcaps](docs/shots/04-horde-default-bar.png)
 
@@ -55,11 +55,11 @@ Each pack declares `actionBars` and per-family `bars`. Apply (`/superbinds`, out
 | **R** | 9 | Wrath | Feral: Tiger’s Fury · Guardian: Maul | Elune: Lunar Beam (Raze is click) | Wrath |
 | **M5** | 8 | Regrowth | Regrowth | Frenzied Regeneration | Regrowth |
 | **M4** | 10 | Dash on **every** form bar (`allBars`) | | | |
-| Wheel | 3–6 | Elune probe: Bear / Cat / Travel; Shift-WheelUp is **Thorn Bloom**. Other packs: Moonkin on Shift-WheelUp | | | |
+| Wheel | 3–6 | Elune Prime: Bear / Cat / Travel. Thorn Bloom is **Shift-E**. Elune's Chosen: Shift-WheelUp Thorn Bloom. Other packs: Moonkin on Shift-WheelUp | | | |
 
 Ground travel **shares the caster bar** (`use="caster"`) and still gets its own endcap. **Skyriding / flight form** is still Travel Form, but it uses bonus bar 5 (absolute slots ~121–132), not caster. Shapeshifts are **manual** keys, never next-cast. The Forms wheel (Bear / Cat / Travel) stays those spells in every stance, including skyriding — Aerial Halt is not a form.
 
-While skyriding the console stays up and the default WoW bar is hidden. Live columns: **E** Surge Forward, **Q** Second Wind, **C** Whirling Surge. **1** Aerial Halt and **2** Skyward Ascent sit on the console (they are not Forms or Thorn). Shift-wheel-up stays Thorn Bloom.
+While skyriding the console stays up and the default WoW bar is hidden. Live columns: **E** Surge Forward, **Q** Second Wind, **C** Whirling Surge. **1** Aerial Halt and **2** Skyward Ascent sit on the console (they are not Forms or Thorn). Elune's Chosen Shift-wheel-up stays Thorn Bloom; Elune Prime Thorn is Shift-E.
 
 A drop onto a family parent writes **only the form you are in**. The **slot is the truth**: the live relative column (`ACTIONBUTTON1` in bear is 97) must receive `PlaceAction`. `formPrimary` is a restock log written *after* that, not a parallel inventory. Reloads rebuild the console without Pickup/Place. A drop must not PlaceID every bar (that shuffled slots onto the cursor).
 
@@ -71,7 +71,8 @@ Spellbook drops do **not** need Shift. Shift-drag a **drawer extra** onto the pa
 
 - Compact brass strip: family tabs, hover drawers, BIND, `::` grip, drop rail `+`
 - Families: Attack E · Disrupt Q · Heal M5 · Forms wheel · Move M4 · Protect C · Empower R · Travel X · Buffs · Recover
-- Hover a tab to open that family. BIND opens every drawer in a wrapping grid
+- Hover a tab to open that family. BIND opens every drawer as a **narrow column above its own tab** (odd/even rows so neighbors do not pile up)
+- BIND a **drawer extra** to a strip key (Q, E, M4, …) **swaps**: extra becomes the face, the old face moves into that drawer. Rebinding the face itself does not PlaceAction (that emptied the slot)
 - Shift-drag a **drawer extra** onto the parent **swaps** (old parent moves into the drawer). Shift-drag a face **off the bar** empties this form’s slot (`formPrimary.empty`); `/superbinds restore E` restocks. Drop on `+` adds a click-only extra. Spellbook / rune-book drop on the parent is `PlaceAction` on that form’s slot
 - Cooldown swipe + countdown on tabs and drawer rows
 - Assisted-combat **blue shimmer** is paint-only (`GetNextCastSpell(false)`). Do not `SetActionUIButton`. Midnight combat IDs stay secret — texture/cooldown APIs get the raw id. Shapeshifts are never suggested
@@ -83,12 +84,13 @@ Spellbook drops do **not** need Shift. Shift-drag a **drawer extra** onto the pa
 
 | Pack | Spec | Hero | Native form | Default |
 |---|---|---|---|---|
-| Elune's Chosen | 104 | 24 | bear | yes (Guardian + Elune tree) |
+| Elune Prime | 104 | 24 | bear | yes (Guardian + Elune tree) |
+| Elune's Chosen | 104 | 24 | bear | previous Elune strip (`/superbinds load Elune's Chosen`) |
 | Guardian | 104 | — | bear | fallback (`/superbinds load Guardian`) |
 | Feral | 103 | — | cat (E is SBA in cat) | spec-follow |
 | Balance | 102 | — | moonkin | starter, not an endgame APL |
 
-`/superbinds load Elune's Chosen` / `Guardian` / `Feral` / `Balance`. Spec follow prefers `pack.hero == GetActiveHeroTalentSpec()`, then a spec pack with no `hero` field.
+`/superbinds load Elune Prime` / `Elune's Chosen` / `Guardian` / `Feral` / `Balance`. Spec follow prefers a **default** pack with `pack.hero == GetActiveHeroTalentSpec()`, then a spec pack with no `hero` field.
 
 ## Install
 
@@ -98,7 +100,7 @@ Full steps: [`docs/INSTALL.md`](docs/INSTALL.md).
 
 ## Commands
 
-`/superbinds` apply; `load Elune's Chosen|Guardian|Feral|Balance`; `save`; `list`; `delete`; `default`; `bind`; `map`; `options`; `keys`; `hide`; `show`. `/keymap` field guide. Alias `/sbinds`.
+`/superbinds` apply; `load Elune Prime|Elune's Chosen|Guardian|Feral|Balance`; `save`; `list`; `delete`; `default`; `bind`; `map`; `options`; `keys`; `hide`; `show`. `/keymap` field guide. Alias `/sbinds`.
 
 Custom saves store an overlay plus the base pack name. Shipped tables are not overwritten.
 
