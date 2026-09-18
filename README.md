@@ -8,6 +8,12 @@ Layouts are **profile data** — the engine has no class spells. The product is 
 
 Current TOC packs: **Elune's Chosen** (Guardian + hero tree 24, default), **Guardian** (fallback), **Feral**, **Balance**.
 
+![Haranir cat form — wolverine endcaps, same keys as every stance](docs/shots/01-haranir-cat.png)
+
+![Haranir travel form — sable endcaps, caster page under the same keys](docs/shots/02-haranir-travel.png)
+
+![Haranir unshifted Horde — wind-rider endcaps, caster page](docs/shots/03-haranir-horde-default.png)
+
 - Session / shipping notes: [`docs/NOTES.md`](docs/NOTES.md)
 - **Profile from a live probe (philosophy + agent):** [`docs/PROFILE-GUIDE.md`](docs/PROFILE-GUIDE.md)
 - Profile schema (form bars, overlays, BIND): [`docs/PROFILE-SCHEMA.md`](docs/PROFILE-SCHEMA.md)
