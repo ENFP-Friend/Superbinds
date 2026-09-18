@@ -2,11 +2,13 @@
 ## Title: Super Binds
 ## Notes: Profile-driven action console. Native slots, same keys every form.
 ## Author: ENFP-Friend
-## Version: 0.5.18
+## Version: 0.5.82
 ## SavedVariables: SuperBindsDB
 ## Category: User Interface
+## AddonCompartmentFunc: SuperBinds_OnCompartmentClick
 
 SuperBinds.lua
 Profiles/Druid/Guardian.lua
+Profiles/Druid/ElunesChosen.lua
 Profiles/Druid/Feral.lua
 Profiles/Druid/Balance.lua

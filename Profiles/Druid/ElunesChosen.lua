@@ -1,22 +1,29 @@
--- Guardian fallback. Previous bear kit when Elune's Chosen is not the hero tree.
--- E attack  Q disrupt  M5 heal  T forms/wheel  M4 move  C protect  R empower  X travel  BUF  +
--- Wheel is claimed: up bear, down cat, shift-up moonkin, shift-down travel. Ctrl-wheel stays camera.
--- Known() hides anything this level-21 kit has not learned yet. Shapeshifts are never next-cast.
+-- Elune's Chosen Guardian. Probe 2026-09-18 15:43:06 (Haranir, spec 104, hero 24).
+-- Families are JOBS (same strip as Guardian). Faces are this form's verb for that job.
+-- E attack  Q disrupt  M5 heal  T forms  M4 move  C protect  R empower  X travel  THORN  BUF  +
+-- Probe shapeshifts: Bear / Cat / Travel only. No Moonkin faces. Raze not Maul.
+-- SBA presses Lunar Beam, Mangle, Moonfire, Raze, Swipe, Thrash (+ Bear Form / MotW / Convoke).
+-- Convoke is SBA-only; the book has Heart of the Wild. Shapeshifts are never next-cast.
 SuperBinds.RegisterProfile({
-  name="Guardian", class="DRUID", familyMode="guardian", spec=104, default=false,
+  name="Elune's Chosen", class="DRUID", familyMode="elune", spec=104, hero=24, default=true,
   useBlizzardSBA=false, form="caster", nativeForm="bear",
-  appliedNote="Guardian: E attack  Q control  M5 heal  wheel forms (up bear / down cat / shift-up moonkin / shift-down travel)  M4 dash  C barkskin  R spend. Ctrl-wheel zooms.",
+  appliedNote="Elune's Chosen: E attack  Q disrupt  M5 heal  wheel forms  Shift-wheel-up thorn  M4 move  C protect  R empower. Ctrl-wheel zooms.",
+  spellIds={
+    ["Thorn Bloom"]=1237885,
+    ["Rootwalking"]=1238686,
+    ["Rootwalking: Return"]=1238695,
+  },
+  ground={"Thorn Bloom"},
+  actionOverride={"Rootwalking"},
   forms={
     cat={spells={768}},
     bear={spells={5487}},
     travel={spells={783,33943,40120,1066}},
-    moonkin={spells={24858,197625}},
   },
   actionBars={
     caster={page=1},
     cat={bonus=1},
     bear={bonus=3},
-    moonkin={bonus=4},
     travel={page=1,use="caster"},
   },
   neverSuggest={
@@ -34,17 +41,14 @@ SuperBinds.RegisterProfile({
       {spell={77758,106832}},
       {spell={33917}},
       {spell={8921,1253582},auraMissing=true,dot=16,ranged=true},
-      {spell={6807,400254},powerType=1,minPower=40},
+      {spell={204066}},
+      {spell={400254},powerType=1,minPower=40},
       {spell={213771,106785},fallback=true},
     },
     cat={
       {spell={1822},auraMissing=true,dot=12},
       {spell={22568},powerType=4,minPower=5},
       {spell={5221},fallback=true},
-    },
-    moonkin={
-      {spell={8921,1253582},auraMissing=true,dot=8,ranged=true},
-      {spell={5176,190984},fallback=true},
     },
     travel={},
   },
@@ -54,47 +58,48 @@ SuperBinds.RegisterProfile({
         caster={slot=1,key="E",spell={8921},label="Moonfire",target="harm"},
         cat={slot=1,key="E",spell={5221},label="Shred",target="harm"},
         bear={slot=1,key="E",spell={33917},label="Mangle",target="harm"},
-        moonkin={slot=1,key="E",spell={8921},label="Moonfire",target="harm"},
       },
       items={
-        {spell={8921},label="Moonfire",bindKey="SHIFT-E",target="harm",note="ranged tag"},
-        {spell={5176,190984},label="Wrath",bindKey="CTRL-E",target="harm"},
+        {spell={8921,1253582},label="Moonfire",bindKey="SHIFT-E",target="harm",note="ranged tag · feeds Lunar Beam"},
         {spell={77758,106832},label="Thrash",target="harm",note="bear bleed · click"},
         {spell={213771,106785,213764},label="Swipe",target="harm",note="filler · click"},
+        {spell={5176,190984},label="Wrath",bindKey="CTRL-E",target="harm"},
         {spell={1822},label="Rake",target="harm",form="cat"},
+        {spell={1079},label="Rip",target="harm",form="cat"},
       }},
     {tag="Q",title="Disrupt · Q",caption="DISRUPT",
       bars={
         caster={slot=2,key="Q",spell={339},label="Entangling Roots",target="harm"},
         cat={slot=2,key="Q",spell={5215},label="Prowl"},
         bear={slot=2,key="Q",spell={6795},label="Growl"},
-        moonkin={slot=2,key="Q",spell={339},label="Entangling Roots",target="harm"},
       },
       items={
-        {spell={106839},label="Skull Bash",bindKey="SHIFT-Q",target="harm",note="interrupt when talented"},
+        {spell={106839},label="Skull Bash",bindKey="SHIFT-Q",target="harm",note="interrupt"},
         {spell={339},label="Entangling Roots",target="harm",note="click"},
+        {spell={132469},label="Typhoon",note="knockback · click"},
+        {spell={102793},label="Ursol's Vortex",target="cursor",note="pull · click"},
+        {spell={2908},label="Soothe",target="harm",note="enrage off · click"},
       }},
     {tag="M5",title="Heal · M5",caption="HEAL",
       bars={
         caster={slot=8,key="M5",bindKey="BUTTON5",spell={8936},label="Regrowth",target="help"},
         cat={slot=8,key="M5",bindKey="BUTTON5",spell={8936},label="Regrowth",target="help"},
         bear={slot=8,key="M5",bindKey="BUTTON5",spell={22842},label="Frenzied Regeneration"},
-        moonkin={slot=8,key="M5",bindKey="BUTTON5",spell={8936},label="Regrowth",target="help"},
       },
       items={
-        {spell={774},label="Rejuvenation",target="help",note="hot · click"},
         {spell={22842},label="Frenzied Regeneration",note="bear heal · click"},
+        {spell={8936},label="Regrowth",target="help",note="click"},
       }},
     {tag="T",title="Forms · wheel",caption="FORMS",
       bar={slot=3,key="WheelUp",bindKey="MOUSEWHEELUP",spell={5487},label="Bear Form",allBars=true},
       items={
         {slot=4,key="WheelDown",bindKey="MOUSEWHEELDOWN",spell={768},label="Cat Form",allBars=true},
-        {slot=5,key="Shift-WheelUp",bindKey="SHIFT-MOUSEWHEELUP",spell={24858,197625},label="Moonkin Form",allBars=true},
         {slot=6,key="Shift-WheelDown",bindKey="SHIFT-MOUSEWHEELDOWN",spell={783},label="Travel Form",allBars=true},
       }},
     {tag="M4",title="Move · M4",caption="MOVE",
       bar={slot=10,key="M4",bindKey="BUTTON4",spell={1850},label="Dash",allBars=true},
       items={
+        {spell={102401},label="Wild Charge",note="gap closer · click"},
         {spell={77761,77764,106898},label="Stampeding Roar",note="group speed · click"},
       }},
     {tag="C",title="Protect · C",caption="PROTECT",
@@ -102,7 +107,6 @@ SuperBinds.RegisterProfile({
         caster={slot=7,key="C",spell={22812},label="Barkskin"},
         cat={slot=7,key="C",spell={22812},label="Barkskin"},
         bear={slot=7,key="C",spell={192081},label="Ironfur"},
-        moonkin={slot=7,key="C",spell={22812},label="Barkskin"},
       },
       items={
         {spell={22812},label="Barkskin",note="wall · click"},
@@ -112,15 +116,29 @@ SuperBinds.RegisterProfile({
       bars={
         caster={slot=9,key="R",spell={5176},label="Wrath",target="harm"},
         cat={slot=9,key="R",spell={22568},label="Ferocious Bite",target="harm"},
-        bear={slot=9,key="R",spell={6807,400254},label="Maul",target="harm"},
-        moonkin={slot=9,key="R",spell={5176},label="Wrath",target="harm"},
+        bear={slot=9,key="R",spell={204066},label="Lunar Beam",target="harm"},
       },
       items={
-        {spell={50334,106951},label="Berserk",note="burst · click"},
+        {spell={400254},label="Raze",target="harm",note="rage dump · click"},
+        {spell={204066},label="Lunar Beam",target="harm",note="hero CD · click"},
+        {spell={102558},label="Incarnation: Guardian of Ursoc",note="burst · click"},
+        {spell={319454,108291,"Heart of the Wild"},label="Heart of the Wild",note="off-spec window · click"},
       }},
     {tag="X",title="Travel · X",caption="TRAVEL",
       items={
         {bindKey="X",key="X",macrotext="/dismount [mounted]\n/run if not IsMounted() and not InCombatLockdown() then C_MountJournal.SummonByID(0) end",label="Favorite mount",iconFile=132250},
+      }},
+    {tag="ROOTS",title="Thorn · Bloom",caption="THORN",
+      bar={
+        slot=5,key="Shift-WheelUp",bindKey="SHIFT-MOUSEWHEELUP",allBars=true,
+        label="Thorn Bloom",target="cursor",
+        spell={1237885,"Thorn Bloom"},
+        macro={"SBThorn",7491039,"#showtooltip Thorn Bloom\n/cast [@cursor] Thorn Bloom"},
+      },
+      items={
+        {spell={1238686,"Rootwalking",1238695,"Rootwalking: Return"},label="Rootwalking",
+          covers={"Rootwalking","Rootwalking: Return"},requires="Rootwalking",
+          note="Haranir · cancels form"},
       }},
     {tag="BUF",title="Buffs · click",caption="BUFFS",
       items={
@@ -128,15 +146,18 @@ SuperBinds.RegisterProfile({
       }},
     {tag="+",title="Recover · click",caption="RECOVER",
       items={
+        {spell={20484,"Rebirth"},label="Rebirth",target="help",note="combat rez"},
         {spell={50769},label="Revive",note="out of combat"},
+        {spell={2782},label="Remove Corruption",target="help",note="dispel"},
+        {spell={18960},label="Teleport: Moonglade"},
         {itemID=6948,label="Hearthstone"},
       }},
   },
   hardware={
     BUTTON5={slot=8}, BUTTON4={slot=10},
-    MOUSEWHEELUP={slot=3, spell=5487}, MOUSEWHEELDOWN={slot=4, spell=768},
-    ["SHIFT-MOUSEWHEELUP"]={slot=5, spell={24858,197625}},
-    ["SHIFT-MOUSEWHEELDOWN"]={slot=6, spell=783},
+    MOUSEWHEELUP={slot=3}, MOUSEWHEELDOWN={slot=4},
+    ["SHIFT-MOUSEWHEELUP"]={slot=5},
+    ["SHIFT-MOUSEWHEELDOWN"]={slot=6},
   },
   reserved={
     ["CTRL-MOUSEWHEELUP"]="camera zoom in",["CTRL-MOUSEWHEELDOWN"]="camera zoom out",

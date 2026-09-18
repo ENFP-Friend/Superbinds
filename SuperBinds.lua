@@ -1,4 +1,4 @@
--- Super Binds 0.5.18 — class-agnostic port of the Shaman Binds 8.34 engine.
+-- Super Binds 0.5.82 — class-agnostic port of the Shaman Binds 8.34 engine.
 -- Packs live in Profiles/. Engine: native ACTIONBUTTON faces, BIND, drawers, shimmer.
 SuperBindsDB = type(SuperBindsDB) == "table" and SuperBindsDB or {}
 
@@ -13,7 +13,7 @@ local busy, finishing = false, false
 consoleTabs, menus, allMenuButtons = {}, {}, {}
 -- Helpers on P do not count toward Lua's 200-local file limit.
 local P = {}
-local RefreshLayout, NormalizeAbility, Locked, Known
+local RefreshLayout, NormalizeAbility, Locked, Known, ClearSlot
 
 P.Packs = {}
 function P.RegisterProfile(t)
@@ -32,8 +32,13 @@ function P.PackMatches(t)
 end
 function P.FindPack(name)
   if not P.Text(name) then return end
+  local want = name:lower()
   for n, t in pairs(P.Packs) do
-    if n:lower() == name:lower() then return t, n end
+    if n:lower() == want then return t, n end
+  end
+  for n, t in pairs(P.Packs) do
+    local mode = t.familyMode
+    if type(mode) == "string" and mode:lower() == want then return t, n end
   end
 end
 function P.DefaultPack()
@@ -91,9 +96,37 @@ function P.PlayerSpecID()
   end)
   return id
 end
+function P.PlayerHeroTalentID()
+  local id
+  pcall(function()
+    if C_ClassTalents and C_ClassTalents.GetActiveHeroTalentSpec then
+      id = P.ID(C_ClassTalents.GetActiveHeroTalentSpec())
+    end
+  end)
+  return id
+end
 function P.PackForPlayerSpec()
   local specID = P.PlayerSpecID and P.PlayerSpecID()
+  local heroID = P.PlayerHeroTalentID and P.PlayerHeroTalentID()
+  local exact, generic, preferred
   if specID then
+    for _, pack in pairs(P.Packs) do
+      if P.PackMatches(pack) and pack.spec == specID then
+        if heroID and pack.hero == heroID then
+          exact = exact or pack
+        elseif not pack.hero then
+          generic = generic or pack
+        end
+        if pack.default then preferred = preferred or pack end
+      end
+    end
+    if exact then return exact, exact.name end
+    if heroID then
+      if generic then return generic, generic.name end
+    else
+      if preferred then return preferred, preferred.name end
+      if generic then return generic, generic.name end
+    end
     for _, pack in pairs(P.Packs) do
       if P.PackMatches(pack) and pack.spec == specID then return pack, pack.name end
     end
@@ -126,11 +159,27 @@ end
 function P.BarButtons()
   return NUM_ACTIONBAR_BUTTONS or 12
 end
+function P.UnclaimedBonusOffset()
+  local ok, offset = pcall(GetBonusBarOffset)
+  if not ok or not P.Number(offset) or offset <= 0 then return nil end
+  local pack = P.CurrentPack and P.CurrentPack()
+  for _, spec in pairs((pack and pack.actionBars) or {}) do
+    if type(spec) == "table" and tonumber(spec.bonus) == offset and not P.Text(spec.use) then
+      return nil
+    end
+  end
+  return offset
+end
+
 function P.BarOwner(form)
   local pack = P.CurrentPack()
   if not pack or not form then return form end
   local spec = pack.actionBars and pack.actionBars[form]
-  if type(spec) == "table" and P.Text(spec.use) then return spec.use end
+  -- Ground travel may share caster slots. Skyriding travel is bonus 5, not caster.
+  if type(spec) == "table" and P.Text(spec.use) then
+    if P.UnclaimedBonusOffset and P.UnclaimedBonusOffset() then return form end
+    return spec.use
+  end
   return form
 end
 function P.CurrentForm()
@@ -140,19 +189,72 @@ function P.CurrentForm()
   local ok, index = pcall(GetShapeshiftForm)
   -- Secret/unknown must not pretend we are caster. Next-cast returns nil instead.
   if not ok or (issecretvalue and issecretvalue(index)) or not P.Number(index) then return nil end
-  if index == 0 then return fallback end
-  local infoOk, _, _, _, id = pcall(GetShapeshiftFormInfo, index)
+  if index == 0 then
+    -- Druid flight / skyriding is still Travel Form. GetShapeshiftForm is 0.
+    local aura = P.FormFromAuras and P.FormFromAuras()
+    if aura then return aura end
+    return fallback
+  end
+  local infoOk, formName, _, _, id = pcall(GetShapeshiftFormInfo, index)
   if not infoOk then return nil end
   id = P.ID(id)
-  if not id then return nil end
+  formName = P.Text(formName)
   if pack and type(pack.forms) == "table" then
     for name, spec in pairs(pack.forms) do
       for _, sid in ipairs((type(spec) == "table" and spec.spells) or {}) do
-        if sid == id then return name end
+        if id and sid == id then return name end
+      end
+    end
+    -- Haranir / alternate shapeshift IDs still use the localized form name.
+    if formName then
+      local lower = formName:lower()
+      for name, spec in pairs(pack.forms) do
+        if P.Text(name) and lower:find(name:lower(), 1, true) then return name end
+        for _, sid in ipairs((type(spec) == "table" and spec.spells) or {}) do
+          local sn = C_Spell and C_Spell.GetSpellName and P.Text(C_Spell.GetSpellName(sid))
+          if sn and (sn == formName or sn:lower() == lower) then return name end
+        end
       end
     end
   end
   return nil
+end
+
+-- Stance page actually shown. GetShapeshiftFormInfo IDs can miss Haranir
+-- forms and then PackFormNow used to pretend we were caster.
+function P.BonusBarForm()
+  local pack = P.CurrentPack and P.CurrentPack()
+  if not pack or type(pack.actionBars) ~= "table" then return nil end
+  local ok, offset = pcall(GetBonusBarOffset)
+  if not ok or not P.Number(offset) then return nil end
+  if offset <= 0 then
+    -- Shifted but bonus not public yet is not caster.
+    local idxOk, index = pcall(GetShapeshiftForm)
+    if idxOk and P.Number(index) and index > 0 then return nil end
+    return "caster"
+  end
+  for name, spec in pairs(pack.actionBars) do
+    if type(spec) == "table" and tonumber(spec.bonus) == offset and not P.Text(spec.use) then
+      return name
+    end
+  end
+end
+
+function P.PackFormNow()
+  local pack = P.CurrentPack and P.CurrentPack()
+  if not pack then return "caster" end
+  local form = P.BonusBarForm and P.BonusBarForm()
+  if not form then form = P.CurrentForm and P.CurrentForm() end
+  if form and P.BarOwner then form = P.BarOwner(form) or form end
+  if P.Text(form) then
+    P._barForm = form
+    return form
+  end
+  -- Unmatched bonus (skyriding) is not the last stance and not caster.
+  if P.UnclaimedBonusOffset and P.UnclaimedBonusOffset() then return nil end
+  if P._barForm then return P._barForm end
+  if pack.actionBars then return nil end
+  return pack.form or "caster"
 end
 function P.PackNativeForm(pack)
   pack = pack or (P.CurrentPack and P.CurrentPack())
@@ -165,12 +267,192 @@ function P.PackNativeForm(pack)
   if mode == "feral" then return "cat" end
   if mode == "balance" then return "moonkin" end
 end
+function P.AbilityLooksLikeShapeshift(ab)
+  if type(ab) ~= "table" then return false end
+  local name = P.Text(ab.name) or P.Text(ab.label)
+  if name and name:find("Form", 1, true) then return true end
+  local pack = P.CurrentPack and P.CurrentPack()
+  local ids = {}
+  local function take(sid)
+    sid = P.ID(sid)
+    if sid then ids[sid] = true end
+  end
+  if type(ab.spell) == "table" then
+    for _, sid in ipairs(ab.spell) do take(sid) end
+  end
+  take(ab.id)
+  for _, spec in pairs((pack and pack.forms) or {}) do
+    for _, sid in ipairs((type(spec) == "table" and spec.spells) or {}) do
+      if ids[P.ID(sid)] then return true end
+    end
+  end
+  return false
+end
+
+function P.PlayerHasSpellAura(id)
+  id = P.ID(id)
+  if not id then return false end
+  if C_UnitAuras and C_UnitAuras.GetPlayerAuraBySpellID then
+    local ok, info = pcall(C_UnitAuras.GetPlayerAuraBySpellID, id)
+    if ok and type(info) == "table" then return true end
+  end
+  local name = C_Spell and C_Spell.GetSpellName and P.Text(C_Spell.GetSpellName(id))
+  if name and AuraUtil and AuraUtil.FindAuraByName then
+    local ok, aura = pcall(AuraUtil.FindAuraByName, name, "player")
+    if ok and aura then return true end
+  end
+  return false
+end
+
+function P.FormFromAuras()
+  local pack = P.CurrentPack and P.CurrentPack()
+  if type(pack) ~= "table" or type(pack.forms) ~= "table" then return nil end
+  for name, spec in pairs(pack.forms) do
+    for _, sid in ipairs((type(spec) == "table" and spec.spells) or {}) do
+      if P.PlayerHasSpellAura(sid) then return name end
+    end
+    local title = P.Text(name)
+    if title then
+      local pretty = title:sub(1, 1):upper() .. title:sub(2) .. " Form"
+      if AuraUtil and AuraUtil.FindAuraByName then
+        local ok, aura = pcall(AuraUtil.FindAuraByName, pretty, "player")
+        if ok and aura then return name end
+      end
+    end
+  end
+end
+
+function P.CollectFormBinds()
+  local out = {}
+  local pack = P.CurrentPack and P.CurrentPack()
+  local function take(spec)
+    if type(spec) ~= "table" or not P.AbilityLooksLikeShapeshift(spec) then return end
+    local key = P.Text(spec.bindKey)
+    if not key then return end
+    local cmd = P.SpellBindCommand and P.SpellBindCommand(spec.spell)
+    local name = cmd and cmd:match("^SPELL (.+)$")
+    if name then out[key] = name end
+  end
+  for _, fam in ipairs((pack and pack.families) or {}) do
+    take(fam.bar)
+    if type(fam.bars) == "table" then
+      for _, spec in pairs(fam.bars) do take(spec) end
+    end
+    for _, it in ipairs(fam.items or {}) do take(it) end
+  end
+  return out
+end
+
+function P.FormBindCommand(key)
+  key = P.Text(key)
+  if not key then return nil end
+  local name = P.CollectFormBinds()[key]
+  return name and ("SPELL " .. name) or nil
+end
+
+function P.PackFaceCommand(key)
+  key = P.Text(key)
+  if not key then return nil end
+  local formCmd = P.FormBindCommand(key)
+  if formCmd then return formCmd end
+  local pack = P.CurrentPack and P.CurrentPack()
+  local function take(spec)
+    if type(spec) ~= "table" or P.Text(spec.bindKey) ~= key then return nil end
+    if type(spec.macro) == "table" then
+      local cmd = P.NamedMacroCommand and P.NamedMacroCommand(spec.macro[1])
+      if cmd then return cmd end
+    end
+    if spec.spell then return P.SpellBindCommand and P.SpellBindCommand(spec.spell) end
+  end
+  for _, fam in ipairs((pack and pack.families) or {}) do
+    local cmd = take(fam.bar)
+    if cmd then return cmd end
+    if type(fam.bars) == "table" then
+      for _, spec in pairs(fam.bars) do
+        cmd = take(spec)
+        if cmd then return cmd end
+      end
+    end
+    for _, it in ipairs(fam.items or {}) do
+      cmd = take(it)
+      if cmd then return cmd end
+    end
+  end
+end
+
+-- Live skyriding bar: E/Q/C already own Surge / Second Wind / Whirling.
+-- Aerial Halt and Skyward Ascent sit on our form/thorn columns; they move to 1/2.
+P.SKYRIDING_KEYS = {
+  ["Aerial Halt"] = "1",
+  ["Skyward Ascent"] = "2",
+}
+
+function P.SkyridingExtraKeys()
+  local out = {}
+  if not (P.UseMountBar and P.UseMountBar()) then return out end
+  local seen = {}
+  local n = (P.BarButtons and P.BarButtons()) or 12
+  for rel = 1, n do
+    local abs = P.LiveActionSlot and P.LiveActionSlot(rel)
+    local native = abs and P.NativeAbility and P.NativeAbility(abs)
+    local name = native and (P.Text(native.name) or P.Text(native.label))
+    local key = name and P.SKYRIDING_KEYS[name]
+    if key and not seen[key] then
+      seen[key] = true
+      out[#out + 1] = {
+        key = key, name = name, label = name,
+        id = native.id, icon = native.icon,
+      }
+    end
+  end
+  table.sort(out, function(a, b) return a.key < b.key end)
+  return out
+end
+
+function P.SyncSkyridingDriver()
+  local d = P.barDriver
+  if not d then return end
+  local i = 0
+  local function add(key, spell)
+    key, spell = P.Text(key), P.Text(spell)
+    if not key or not spell then return end
+    i = i + 1
+    d:SetAttribute("sk" .. i, key)
+    d:SetAttribute("ss" .. i, spell)
+  end
+  for key, name in pairs(P.CollectFormBinds()) do add(key, name) end
+  for _, row in ipairs(P.SkyridingExtraKeys()) do add(row.key, row.name) end
+  local old = tonumber(d:GetAttribute("sn")) or 0
+  for j = i + 1, old do
+    d:SetAttribute("sk" .. j, nil)
+    d:SetAttribute("ss" .. j, nil)
+  end
+  d:SetAttribute("sn", i)
+end
+
+function P.ApplySkyridingKeybinds(owner)
+  if Locked() then return end
+  owner = owner or P.barDriver
+  if not owner then return end
+  P.SyncSkyridingDriver()
+  if not (P.UseMountBar and P.UseMountBar()) then return end
+  for key, name in pairs(P.CollectFormBinds()) do
+    pcall(SetOverrideBindingSpell, owner, true, key, name)
+  end
+  for _, row in ipairs(P.SkyridingExtraKeys()) do
+    pcall(SetOverrideBindingSpell, owner, true, row.key, row.name)
+  end
+end
+
 function P.FamilyHasBars(tag)
   if not P.Text(tag) then return false end
   local pack = P.CurrentPack and P.CurrentPack()
   if type(pack) ~= "table" or type(pack.families) ~= "table" then return false end
   for _, fam in ipairs(pack.families) do
-    if fam.tag == tag and type(fam.bars) == "table" then return true end
+    if fam.tag == tag then
+      if type(fam.bars) == "table" then return true end
+      if type(fam.bar) == "table" and tonumber(fam.bar.slot) then return true end
+    end
   end
   return false
 end
@@ -179,12 +461,14 @@ function P.FamilyBarSpec(tag, form)
   if not P.Text(tag) then return nil end
   local pack = P.CurrentPack and P.CurrentPack()
   if type(pack) ~= "table" then return nil end
-  form = form or (P.CurrentForm and P.CurrentForm())
+  form = form or (P.PackFormNow and P.PackFormNow())
   if form and P.BarOwner then form = P.BarOwner(form) or form end
   for _, fam in ipairs(pack.families or {}) do
     if fam.tag == tag then
       if type(fam.bars) == "table" then
-        return fam.bars[form] or fam.bars.caster or fam.bar
+        -- A missing form entry is not permission to write the caster bar.
+        -- Unknown stance state must fail closed until Blizzard exposes it.
+        return fam.bars[form]
       end
       return fam.bar
     end
@@ -210,6 +494,70 @@ function P.ActionSlot(rel, form)
   if not (pack and pack.actionBars) then return rel end
   return P.SlotBase(form) + rel
 end
+-- Bear E is 97, not page-1 slot 1. Named form can miss Haranir IDs; the live
+-- bonus offset is what ACTIONBUTTON1 actually fires. Never guess caster
+-- because a shapeshift id missed.
+function P.LiveActionSlot(rel)
+  rel = tonumber(rel)
+  if not rel or rel < 1 or rel > P.BarButtons() then return nil end
+  local n = P.BarButtons()
+  local ok, offset = pcall(GetBonusBarOffset)
+  if ok and P.Number(offset) then
+    if offset > 0 then
+      return (P.BarPages() + offset - 1) * n + rel
+    end
+    return P.ActionSlot(rel, "caster") or rel
+  end
+  local form = P.PackFormNow and P.PackFormNow()
+  if form then return P.ActionSlot(rel, form) end
+end
+-- Relative 1-12 columns this pack actually owns (faces + hardware + barBinds).
+-- Apply vacates the rest so a profile switch does not leave Growl on 11.
+function P.PackClaimedRelSlots()
+  local owned = {}
+  local pack = P.CurrentPack and P.CurrentPack()
+  if type(pack) ~= "table" then return owned end
+  local function claim(spec)
+    if type(spec) ~= "table" then return end
+    local slot = tonumber(spec.slot)
+    if slot and slot >= 1 and slot <= 12 then owned[slot] = true end
+  end
+  for _, fam in ipairs(pack.families or {}) do
+    if type(fam.bars) == "table" then
+      for _, spec in pairs(fam.bars) do claim(spec) end
+    end
+    claim(fam.bar)
+    claim(fam.bar2)
+    for _, it in ipairs(fam.items or {}) do claim(it) end
+  end
+  for _, spec in pairs(pack.hardware or {}) do claim(spec) end
+  for _, cmd in pairs(pack.barBinds or {}) do
+    if type(cmd) == "string" then
+      local slot = tonumber(cmd:match("ACTIONBUTTON(%d+)"))
+      if slot and slot >= 1 and slot <= 12 then owned[slot] = true end
+    end
+  end
+  return owned
+end
+
+function P.VacateUnclaimedBarSlots()
+  if Locked() then return end
+  local owned = P.PackClaimedRelSlots and P.PackClaimedRelSlots() or {}
+  local n = P.BarButtons()
+  for _, form in ipairs(P.UniqueBarForms()) do
+    for rel = 1, n do
+      if not owned[rel] then
+        local abs = P.ActionSlot(rel, form)
+        if abs then
+          pcall(ClearCursor)
+          ClearSlot(abs)
+        end
+      end
+    end
+  end
+  pcall(ClearCursor)
+end
+
 function P.UniqueBarForms()
   local pack = P.CurrentPack()
   local out, seen = {}, {}
@@ -329,6 +677,11 @@ function P.EnsureFormPageDriver()
       parts[#parts + 1] = string.format("[bonusbar:%d] %d", bonus, pages + bonus)
     end
   end
+  for n = 1, 5 do
+    if not seen[n] then
+      parts[#parts + 1] = string.format("[bonusbar:%d] %d", n, pages + n)
+    end
+  end
   parts[#parts + 1] = "1"
   pcall(RegisterStateDriver, d, "page", table.concat(parts, "; "))
 end
@@ -347,6 +700,7 @@ do
   w:SetScript("OnEvent", function(_, event)
     P.regenCombat = (event == "PLAYER_REGEN_DISABLED")
     P.regenCombatKnown = true
+    if P.ApplyPressPulseShown then P.ApplyPressPulseShown() end
   end)
 end
 
@@ -367,6 +721,21 @@ end
 function P.PublicNumber(value)
   if issecretvalue and issecretvalue(value) then return nil end
   return P.Number(value) and value or nil
+end
+
+-- Secret-safe unwrap for non-numbers (textures, names).
+function P.Public(value)
+  if value == nil then return nil end
+  if issecretvalue and issecretvalue(value) then return nil end
+  return value
+end
+
+-- pcall a Blizzard getter and return its results. Missing fn is a no-op.
+function P.Read(fn, ...)
+  if type(fn) ~= "function" then return end
+  local ok, a, b, c, d, e, f = pcall(fn, ...)
+  if not ok then return end
+  return a, b, c, d, e, f
 end
 
 function P.SmoothUITexture(tex)
@@ -1078,10 +1447,8 @@ function Known(...)
   for i = 1, select("#", ...) do
     local want = select(i, ...)
     if type(want) == "number" then
-      if P.PlayerKnows(want) then
-        local nm = SpellName(want)
-        if nm then return nm, want end
-      end
+      local nm = SpellName(want)
+      if nm and (P.PlayerKnows(want) or BOOK[nm]) then return nm, want end
     elseif want and BOOK[want] then
       return want, BOOK[want]
     end
@@ -1133,9 +1500,16 @@ local function PickupID(id)
   if C_Spell and C_Spell.PickupSpell then C_Spell.PickupSpell(id) else PickupSpell(id) end
 end
 
-local function ClearSlot(slot)
+function ClearSlot(slot)
   PickupAction(slot)
-  ClearCursor()
+  pcall(ClearCursor)
+  if P.CursorHasPickup and P.CursorHasPickup() then
+    -- Secret cursor: dump onto hidden bar 6 then destroy, or leftover
+    -- PickupAction shuffles Growl/Barkskin across unused 11-12.
+    PlaceAction(72)
+    PickupAction(72)
+    pcall(ClearCursor)
+  end
 end
 
 -- Midnight can return a secret from GetCursorInfo even when the cursor is empty.
@@ -1150,11 +1524,101 @@ end
 
 local function PlaceID(slot, id)
   if Locked() or not P.ID(slot) or not P.ID(id) then return false end
+  -- GetCursorInfo may be secret even when the cursor looks empty. Clear it
+  -- before every native placement so PickupSpell cannot swap a previous action
+  -- into the next form slot.
+  pcall(ClearCursor)
   local kind = P.CursorKind()
   if kind and kind ~= "secret" then return false end
   PickupID(id)
   kind = P.CursorKind()
   if kind ~= "spell" and kind ~= "secret" then ClearCursor(); return false end
+  PlaceAction(slot)
+  ClearCursor()
+  KEEP[slot] = true
+  return true
+end
+
+-- Spellbook / rune-book drops already hold the ability. Place that cursor
+-- onto the live slot. Clearing first and PickupSpell(1229376) is how SBA
+-- drops used to vanish — Assisted Combat is not a normal pickupable spell.
+function P.PlaceCursorOnSlot(slot)
+  if Locked() or not P.ID(slot) then return false end
+  local kind = P.CursorKind()
+  if not kind then return false end
+  if kind == "secret" and not (P.CursorIsAssisted and P.CursorIsAssisted()) then
+    return false
+  end
+  PlaceAction(slot)
+  ClearCursor()
+  KEEP[slot] = true
+  return true
+end
+
+function P.CursorHasPickup()
+  if P.CursorIsAssisted and P.CursorIsAssisted() then return true end
+  local kind = P.CursorKind()
+  if kind and kind ~= "secret" then
+    return kind == "spell" or kind == "item" or kind == "macro" or kind == "mount"
+      or kind == "pet" or kind == "action" or kind == "flyout" or kind == "companion"
+      or kind == "petaction"
+  end
+  local function has(fn)
+    if type(fn) ~= "function" then return false end
+    local ok, v = pcall(fn)
+    if not ok then return false end
+    if issecretvalue and issecretvalue(v) then return false end
+    return v and true or false
+  end
+  return has(CursorHasSpell) or has(CursorHasItem) or has(CursorHasMacro)
+end
+
+function P.FindAssistedBookSlot()
+  local api = C_SpellBook
+  if not api or not api.GetNumSpellBookSkillLines then return end
+  local bank = Enum and Enum.SpellBookSpellBank and Enum.SpellBookSpellBank.Player
+  local want = P.AssistedActionID and P.AssistedActionID()
+  local assistedType = Enum and Enum.SpellBookItemType and Enum.SpellBookItemType.AssistedCombat
+  local n = api.GetNumSpellBookSkillLines()
+  for line = 1, n or 0 do
+    local li = api.GetSpellBookSkillLineInfo(line)
+    if li and not li.offSpecID then
+      for j = (li.itemIndexOffset or 0) + 1, (li.itemIndexOffset or 0) + (li.numSpellBookItems or 0) do
+        local it = P.BookInfo(j, bank)
+        if it then
+          if assistedType and it.itemType == assistedType then return j, bank end
+          if P.IsAssistedToken(it.itemType) or P.IsAssistedToken(it.name) then return j, bank end
+          local sid = P.ID(it.spellID)
+          if sid and (sid == SBA_ID or sid == want) then return j, bank end
+        end
+      end
+    end
+  end
+end
+
+function P.PickupAssisted()
+  if P.CursorIsAssisted and P.CursorIsAssisted() then return true end
+  local kind = P.CursorKind()
+  if kind and kind ~= "secret" then pcall(ClearCursor) end
+  PickupID(P.AssistedActionID())
+  if P.CursorIsAssisted and P.CursorIsAssisted() then return true end
+  if P.CursorHasPickup and P.CursorHasPickup() then return true end
+  pcall(ClearCursor)
+  local slot, bank = P.FindAssistedBookSlot()
+  if not slot then return false end
+  pcall(function()
+    if C_SpellBook and C_SpellBook.PickupSpellBookItem then
+      C_SpellBook.PickupSpellBookItem(slot, bank)
+    elseif PickupSpellBookItem then
+      PickupSpellBookItem(slot, "spell")
+    end
+  end)
+  return (P.CursorIsAssisted and P.CursorIsAssisted()) or (P.CursorHasPickup and P.CursorHasPickup()) or false
+end
+
+function P.PlaceAssisted(slot)
+  if Locked() or not P.ID(slot) then return false end
+  if not P.PickupAssisted() then return false end
   PlaceAction(slot)
   ClearCursor()
   KEEP[slot] = true
@@ -1239,6 +1703,7 @@ end
 
 local function PlaceMacro(slot, name, icon, body, pulseName, frameName)
   if Locked() then return false end
+  pcall(ClearCursor)
   local kind = P.CursorKind()
   if kind and kind ~= "secret" then return false end
   local index = EnsureMacro(name, icon, body)
@@ -1249,14 +1714,13 @@ local function PlaceMacro(slot, name, icon, body, pulseName, frameName)
   PlaceAction(slot)
   ClearCursor()
   KEEP[slot] = true
-  if slot >= 8 then SuperBindsDB.hiddenSlots[slot] = GetMacroInfo(index) end
+  if slot >= 13 and slot <= 24 then SuperBindsDB.hiddenSlots[slot] = GetMacroInfo(index) end
   return true
 end
 
 -- Midnight blocks @cursor (and some totem) casts from addon SecureActionButtons.
 -- Those macros must sit on a real Blizzard action slot; the key clicks that slot.
--- Mouse extras use page-1 slots 8-12 (ACTIONBUTTON8-12). Never 61-72 as a
--- visible bar, and never MULTIACTIONBAR* — a hidden extra bar does not fire.
+-- Hidden helpers park on 13-24. Columns 8-12 are faces (M5, R, M4). Never 61-72.
 local hiddenByBindId = {}
 local hiddenSlotN = 0
 -- bindKey → first /cast or /use line (no modifier). Filled while extras resolve.
@@ -1278,7 +1742,7 @@ end
 
 -- Totems and @cursor need a real Blizzard slot.
 -- Mousewheel totems match via @cursor / Totem in the body — not the key name.
--- Other mouse keys (M4/M5/MMB) park on reserved 8-12 or a named MACRO bind.
+-- Hidden helpers park on 13-24. M4/M5/R are faces on 8-12.
 local function NeedsBlizzardSlot(item)
   if type(item) ~= "table" then return false end
   if item.equipmentSlot then return false end
@@ -1439,24 +1903,31 @@ function P.NamedMacroCommand(short)
   if index and index > 0 then return "MACRO " .. actual, actual end
 end
 
+-- MACRO/SPELL currently sitting on this relative column (live abs slot).
+-- Wheel fallback when the client rejects ACTIONBUTTON on MOUSEWHEEL*.
+function P.SlotContentCommand(rel)
+  if not P.ID(rel) then return nil end
+  local named = P.MOUSE_MACRO[rel] and P.NamedMacroCommand(P.MOUSE_MACRO[rel])
+  if named then return named end
+  local abs = (P.LiveActionSlot and P.LiveActionSlot(rel)) or rel
+  local ok, kind, id = pcall(GetActionInfo, abs)
+  if not ok or not kind or (issecretvalue and issecretvalue(kind)) then return nil end
+  if kind == "macro" then
+    local name = GetMacroInfo(id)
+    if P.Text(name) then return "MACRO " .. name end
+    local spell = P.ID(id) and ((C_Spell and C_Spell.GetSpellName and C_Spell.GetSpellName(id)) or SpellName(id))
+    return P.Text(spell) and ("SPELL " .. spell) or nil
+  end
+  if kind == "spell" then
+    local name = (C_Spell and C_Spell.GetSpellName and C_Spell.GetSpellName(id)) or SpellName(id)
+    return P.Text(name) and ("SPELL " .. name) or nil
+  end
+end
+
 function P.ActionBindCommand(slot)
   if not P.ID(slot) then return nil end
-  local named = P.MOUSE_MACRO[slot] and P.NamedMacroCommand(P.MOUSE_MACRO[slot])
-  if named then return named end
-  local ok, kind, id = pcall(GetActionInfo, slot)
-  if ok and kind and not (issecretvalue and issecretvalue(kind)) then
-    if kind == "macro" then
-      local name = GetMacroInfo(id)
-      if P.Text(name) then return "MACRO " .. name end
-      -- Midnight sometimes reports a spell as type "macro" with the spell ID.
-      local spell = P.ID(id) and ((C_Spell and C_Spell.GetSpellName and C_Spell.GetSpellName(id)) or SpellName(id))
-      if P.Text(spell) then return "SPELL " .. spell end
-    elseif kind == "spell" then
-      local name = (C_Spell and C_Spell.GetSpellName and C_Spell.GetSpellName(id)) or SpellName(id)
-      if P.Text(name) then return "SPELL " .. name end
-    end
-  end
-  if slot <= 7 then return "ACTIONBUTTON" .. slot end
+  if slot >= 1 and slot <= 12 then return "ACTIONBUTTON" .. slot end
+  return P.SlotContentCommand(slot)
 end
 
 function P.SpellBindCommand(spell)
@@ -1474,24 +1945,30 @@ end
 function P.MouseKeyCommand(key)
   local spec = MOUSE_HARDWARE[key]
   if not spec then return nil end
+  -- Shapeshifts are the same spell on every page. Skyriding empties those
+  -- columns (Aerial Halt is not a form) so wheel must CAST the form, not
+  -- ACTIONBUTTON on the live skyriding slot.
+  local formCmd = P.FormBindCommand and P.FormBindCommand(key)
+  if formCmd then return formCmd end
+  -- E/Q/C follow the skyriding columns. Thorn and other wheel chords stay pack faces.
+  if P.UseMountBar and P.UseMountBar() then
+    local rel = tonumber(spec.slot)
+    if rel ~= 1 and rel ~= 2 and rel ~= 7 then
+      local packCmd = P.PackFaceCommand and P.PackFaceCommand(key)
+      if packCmd then return packCmd end
+    end
+  end
+  -- Stance page supplies the spell. Wheel/M4/M5 that own a column bind that
+  -- column, not a form-static SPELL name (Thorn Bloom vs the @cursor macro).
+  if P.ID(spec.slot) and spec.slot >= 1 and spec.slot <= 12 then
+    return "ACTIONBUTTON" .. spec.slot
+  end
   if spec.macro then
     local cmd = P.NamedMacroCommand(spec.macro)
     if cmd then return cmd end
   end
   if spec.spell then
-    local cmd = P.SpellBindCommand(spec.spell)
-    if cmd then return cmd end
-  end
-  if spec.slot then
-    -- Wheel does not fire ACTIONBUTTON on this client. Bind the spell on the slot.
-    if type(key) == "string" and key:find("MOUSEWHEEL", 1, true) then
-      return P.ActionBindCommand(spec.slot)
-    end
-    local pack = P.CurrentPack and P.CurrentPack()
-    if pack and type(pack.actionBars) == "table" then
-      return "ACTIONBUTTON" .. spec.slot
-    end
-    return P.ActionBindCommand(spec.slot)
+    return P.SpellBindCommand(spec.spell)
   end
 end
 
@@ -1607,48 +2084,25 @@ end
 local function AllocHiddenSlot(bindId)
   local info = hiddenByBindId[bindId]
   if info then return info end
-  -- Real action slots, addressed by ACTIONBUTTON1-12. Occupied user slots
-  -- are never allocated except reserved mouse extras on 8-12.
+  -- Faces own 1-12 (M5=8, R=9, M4=10). Helpers park on 13-24 only.
   local slot
-  local bindKey = tostring(bindId or ""):match("^key:(.+)$")
-  local reserved = bindKey and MOUSE_HARDWARE[bindKey]
-  if reserved and P.ID(reserved.slot) and reserved.slot >= 8 and reserved.slot <= 12 then
-    slot = reserved.slot
-  else
-    local taken = {}
-    for _, spec in pairs(MOUSE_HARDWARE) do
-      if P.ID(spec.slot) and spec.slot >= 8 then taken[spec.slot] = true end
+  local taken = {}
+  for _, spec in pairs(MOUSE_HARDWARE) do
+    if P.ID(spec.slot) and spec.slot >= 1 and spec.slot <= 12 then
+      taken[spec.slot] = true
     end
-    -- M4/M5 mouse keys must land on 8-12 so the bind can be ACTIONBUTTON*
-    -- (the only command mouse buttons reliably fire). MMB extras prefer 13-24
-    -- so they do not eat those five slots. Never use 61-72 (visible bar 6).
-    local id = tostring(bindId or "")
-    local mouse45 = id:find("BUTTON4", 1, true) or id:find("BUTTON5", 1, true)
-    local ranges = mouse45 and {{8, 12}} or {{13, 24}, {8, 12}}
-    for _, range in ipairs(ranges) do
-      for candidate = range[1], range[2] do
-        if not taken[candidate] then
-          local kind, id = GetActionInfo(candidate)
-          local owned = SuperBindsDB.hiddenSlots[candidate]
-          local macroName = kind == "macro" and GetMacroInfo(id)
-          local ours = owned or (type(macroName) == "string" and macroName:sub(1, 3) == "SB_")
-          local free = not kind or ours
-          if mouse45 then
-            -- Claim 8-12 even when a leftover spell is sitting there. Those
-            -- buttons are hidden; mouse extras have nowhere else that ACTIONBUTTON
-            -- can reach.
-            free = true
-          else
-            free = not kind or (owned and macroName == owned
-              and SuperBindsDB.macroNames["SB" .. candidate] == owned)
-          end
-          if not KEEP[candidate] and free then
-            slot = candidate
-            break
-          end
-        end
+  end
+  for candidate = 13, 24 do
+    if not taken[candidate] then
+      local kind, id = GetActionInfo(candidate)
+      local owned = SuperBindsDB.hiddenSlots[candidate]
+      local macroName = kind == "macro" and GetMacroInfo(id)
+      local free = not kind or (owned and macroName == owned
+        and SuperBindsDB.macroNames["SB" .. candidate] == owned)
+      if not KEEP[candidate] and free then
+        slot = candidate
+        break
       end
-      if slot then break end
     end
   end
   -- Full bars are normal. A saved macro can be addressed without an action slot.
@@ -1822,6 +2276,16 @@ end
 local function SanitizeSavedBinds()
   P.EnsureDB()
   P.PruneOrphanSBMacros()
+  -- Empty string means "no saved key", not an explicit unbind. The 0.5.75
+  -- ACTIONBUTTON wipe stored "" for R and then RebindAll never restored it.
+  local function dropEmpty(t)
+    if type(t) ~= "table" then return end
+    for k, v in pairs(t) do
+      if v == "" then t[k] = nil end
+    end
+  end
+  dropEmpty(SuperBindsDB.binds)
+  dropEmpty(SuperBindsDB.barBinds)
   if P.CurrentPack and P.CurrentPack() then return end
   if SuperBindsDB.binds then SuperBindsDB.binds["key:CTRL-Q"] = nil end
   if SuperBindsDB.mods then SuperBindsDB.mods["CTRL-Q"] = nil end
@@ -1932,29 +2396,112 @@ function P.MountAbility(mountID)
   }
 end
 
+function P.AssistedActionID()
+  local id
+  pcall(function()
+    if C_AssistedCombat and C_AssistedCombat.GetActionSpell then
+      id = C_AssistedCombat.GetActionSpell()
+    end
+  end)
+  return P.ID(id) or SBA_ID
+end
+
+function P.IsAssistedToken(v)
+  if v == true then return true end
+  if issecretvalue and issecretvalue(v) then return false end
+  if type(v) == "string" then
+    local s = v:lower()
+    if s == "assistedcombat" or s == "assisted combat" or s == "assisted rotation"
+      or s == "single-button assistant" or s == "sba" then
+      return true
+    end
+    if s:find("assisted", 1, true) then return true end
+  end
+  local id = P.ID(v)
+  return id == SBA_ID
+end
+
+function P.AssistedAbility()
+  local id = P.AssistedActionID()
+  return {
+    kind = "sba", sba = true, id = id,
+    name = "Assisted Rotation", label = "Assisted Rotation",
+    icon = SpellIcon(id) or SpellIcon(SBA_ID) or 134400,
+  }
+end
+
+function P.ActionIsAssisted(slot)
+  slot = P.ID(slot)
+  if not slot then return false end
+  if P.FlagFn and P.FlagFn(function()
+    return C_ActionBar and C_ActionBar.IsAssistedCombatAction
+      and C_ActionBar.IsAssistedCombatAction(slot)
+  end) then
+    return true
+  end
+  local kind, id, sub
+  pcall(function() kind, id, sub = GetActionInfo(slot) end)
+  if P.IsAssistedToken(kind) or P.IsAssistedToken(id) or P.IsAssistedToken(sub) then
+    return true
+  end
+  return P.IsAssistedAbility(id)
+end
+
+function P.CursorIsAssisted()
+  local ok, ctype, a, b, spellID, extra = pcall(GetCursorInfo)
+  if not ok then return false end
+  local function pub(v)
+    if v == nil then return nil end
+    if issecretvalue and issecretvalue(v) then return nil end
+    return v
+  end
+  if P.IsAssistedToken(pub(ctype)) or P.IsAssistedToken(pub(a)) or P.IsAssistedToken(pub(b))
+    or P.IsAssistedToken(pub(spellID)) or P.IsAssistedToken(pub(extra)) then
+    return true
+  end
+  local cur = P.ID(pub(spellID)) or P.ID(pub(a))
+  if cur and (cur == SBA_ID or cur == P.AssistedActionID()) then return true end
+  local info
+  pcall(function()
+    if C_Spell and C_Spell.GetSpellInfo then
+      info = C_Spell.GetSpellInfo(spellID or a)
+    end
+  end)
+  if type(info) == "table" and (P.IsAssistedToken(P.Text(info.name)) or P.IsAssistedToken(info.name)) then
+    return true
+  end
+  local want = P.AssistedActionID()
+  local tex, wantTex
+  pcall(function()
+    if C_Spell and C_Spell.GetSpellTexture then
+      tex = C_Spell.GetSpellTexture(spellID or a)
+      wantTex = C_Spell.GetSpellTexture(want)
+    end
+  end)
+  tex, wantTex = P.Public(tex), P.Public(wantTex)
+  if tex and wantTex and tex == wantTex then return true end
+  return false
+end
+
 function P.IsAssistedAbility(ab, name)
   if ab == true then return true end
   local id, nm
   if type(ab) == "table" then
-    if ab.sba == true then return true end
-    id = P.ID(ab.id)
+    if ab.sba == true or P.IsAssistedToken(ab.kind) then return true end
+    id = ab.id
     nm = P.Text(ab.name) or P.Text(ab.label)
-  elseif type(ab) == "number" then
-    id = P.ID(ab)
+  elseif type(ab) == "number" or type(ab) == "string" then
+    id = ab
     nm = P.Text(name)
   else
     nm = P.Text(ab) or P.Text(name)
   end
+  if P.IsAssistedToken(id) or P.IsAssistedToken(nm) then return true end
+  id = P.ID(id)
+  if not id then return false end
   if id == SBA_ID then return true end
-  if nm == "Single-Button Assistant" or nm == "Assisted Rotation" then return true end
-  local actionID
-  pcall(function()
-    if C_AssistedCombat and C_AssistedCombat.GetActionSpell then
-      actionID = C_AssistedCombat.GetActionSpell()
-    end
-  end)
-  actionID = P.ID(P.PublicNumber and P.PublicNumber(actionID) or actionID)
-  return actionID and id and id == actionID or false
+  local actionID = P.AssistedActionID()
+  return actionID and id == actionID
 end
 
 function NormalizeAbility(ab)
@@ -2061,10 +2608,16 @@ function P.EnsureDB()
     if not P.Text(tag) or type(custom) ~= "table" then
       db.custom[tag] = nil
     else
-      custom.primary = NormalizeAbility(custom.primary)
+      custom.primary = (type(custom.primary) == "table" and custom.primary.empty)
+        and { empty = true, kind = "empty", name = "", label = "", icon = 134400 }
+        or NormalizeAbility(custom.primary)
       if type(custom.formPrimary) == "table" then
         for form, ab in pairs(custom.formPrimary) do
-          custom.formPrimary[form] = P.Text(form) and NormalizeAbility(ab) or nil
+          custom.formPrimary[form] = P.Text(form) and (
+            (type(ab) == "table" and ab.empty)
+              and { empty = true, kind = "empty", name = "", label = "", icon = 134400 }
+              or NormalizeAbility(ab)
+          ) or nil
         end
       else
         custom.formPrimary = nil
@@ -2126,6 +2679,20 @@ function P.EnsureDB()
   db.hideAutoManaged = db.hideAutoManaged ~= false
   if db.warnBinds == nil then db.warnBinds = true end
   db.warnBinds = db.warnBinds ~= false
+  if db.showPressPulse == nil then db.showPressPulse = true end
+  db.showPressPulse = db.showPressPulse ~= false
+  if db.pulseOpacityRev ~= 2 then
+    local old = P.PublicNumber(db.pulseOpacity)
+    if not old or old >= 0.99 then
+      db.pulseOpacity = 0.2
+    else
+      db.pulseOpacity = 0.2 * old
+    end
+    db.pulseOpacityRev = 2
+  end
+  if not P.Number(db.pulseOpacity) then db.pulseOpacity = 0.2 end
+  if db.pulseOpacity < 0.1 then db.pulseOpacity = 0.1 end
+  if db.pulseOpacity > 1 then db.pulseOpacity = 1 end
   db.schemaVersion = 2
   P.ClaimTrinketKeys(db)
   if not P.Text(db.familyMode) then
@@ -2189,11 +2756,12 @@ end
 -- Put whatever the tab is showing onto the same action-bar slot the key fires.
 local function PlacePrimaryOnBar(slot, ability)
   if Locked() or not P.ID(slot) or type(ability) ~= "table" then return false end
+  if P.IsEmptyPrimary and P.IsEmptyPrimary(ability) then return false end
   if ability.itemID then
     return PlaceMacro(slot, "SBBar" .. slot, ability.icon or 134400, "/use item:" .. ability.itemID)
   end
   if ability.sba or P.IsAssistedAbility(ability) then
-    return PlaceID(slot, SBA_ID)
+    return P.PlaceAssisted(slot)
   end
   if ability.macrotext then
     return PlaceMacro(slot, "SBBar" .. slot, ability.icon or 134400, ability.macrotext, ability.name or ability.label)
@@ -2343,6 +2911,67 @@ local function ClearCommandKeys(command)
   for _, key in ipairs({GetBindingKey(command)}) do
     SetBinding(key)
     if P.IsChatKey(key) then P.RestoreChatKeys() end
+  end
+end
+
+-- SPELL / MACRO / ITEM only: one icon should keep one hotkey after BIND.
+-- Do not wipe ACTIONBUTTON or CLICK — those slots can share chords.
+function P.ExclusiveBindCommand(command)
+  if not P.Text(command) then return nil end
+  if command:find("^SPELL ", 1, true) or command:find("^MACRO ", 1, true)
+    or command:find("^ITEM ", 1, true) then
+    return command
+  end
+end
+
+function P.AbilityBindCommands(frame, command)
+  local out, seen = {}, {}
+  local function add(cmd)
+    cmd = P.ExclusiveBindCommand(cmd)
+    if cmd and not seen[cmd] then
+      seen[cmd] = true
+      out[#out + 1] = cmd
+    end
+  end
+  add(command)
+  add(P.PaintedSpellCommand and P.PaintedSpellCommand(frame))
+  local ab = frame and frame._ability
+  if type(ab) == "table" then
+    local name = P.Text(ab.name) or P.Text(ab.label)
+    if name then add("SPELL " .. name) end
+    if P.Text(ab.savedMacroName) and P.NamedMacroCommand then
+      add(P.NamedMacroCommand(ab.savedMacroName))
+    end
+  end
+  return out
+end
+
+-- BIND / apply moved this icon. Drop leftover keys that still fire the same
+-- spell (Ctrl-E after M5, talent defaults, a previous extra bindId).
+function P.ReleaseStaleBindKeys(frame, bindId, keepKey, command)
+  keepKey = P.Text(keepKey)
+  local function drop(key)
+    if not P.Text(key) or key == keepKey then return end
+    pcall(SetBinding, key)
+    if P.IsChatKey(key) then P.RestoreChatKeys() end
+  end
+  for _, cmd in ipairs(P.AbilityBindCommands(frame, command)) do
+    for _, key in ipairs({GetBindingKey(cmd)}) do
+      drop(key)
+    end
+  end
+  local prev = SuperBindsDB.binds and SuperBindsDB.binds[bindId]
+  if prev == "" then prev = nil end
+  local default = frame and frame._sbDefaultKey
+  local want = {}
+  for _, cmd in ipairs(P.AbilityBindCommands(frame, command)) do
+    want[cmd] = true
+  end
+  for _, key in ipairs({prev, default}) do
+    if P.Text(key) and key ~= keepKey then
+      local act = GetBindingAction(key)
+      if want[act] then drop(key) end
+    end
   end
 end
 
@@ -2603,6 +3232,53 @@ local function BindableUnderMouse()
   end
 end
 
+function P.FirstBindingKey(command)
+  if not P.Text(command) then return nil end
+  local ok, a, b, c = pcall(GetBindingKey, command)
+  if not ok then return nil end
+  return P.Text(a) or P.Text(b) or P.Text(c)
+end
+
+function P.BarDefaultKey(slot, frame)
+  if frame and P.Text(frame._sbDefaultKey) then return frame._sbDefaultKey end
+  slot = tonumber(slot)
+  if not slot then return nil end
+  local action = "ACTIONBUTTON" .. slot
+  for key, act in pairs(BAR_BINDS) do
+    if act == action then return key end
+  end
+end
+
+-- What the face actually fires. ACTIONBUTTON first (unified bar), then the
+-- painted SPELL/MACRO leftover from BIND, then the pack column default.
+-- An empty ACTIONBUTTON is not "Click".
+function P.LiveFaceKey(frame)
+  if not frame then return nil end
+  local barSlot = P.BarSlotOf(frame)
+  if barSlot then
+    local key = P.FirstBindingKey("ACTIONBUTTON" .. barSlot)
+    if key then return key end
+    local painted = P.PaintedSpellCommand and P.PaintedSpellCommand(frame)
+    key = painted and P.FirstBindingKey(painted)
+    if key then return key end
+    return P.BarDefaultKey(barSlot, frame)
+  end
+  local saved = SuperBindsDB.binds and SuperBindsDB.binds[frame._sbBindId]
+  if saved == "" then return nil end
+  if P.Text(saved) then return saved end
+  local key = P.FirstBindingKey(frame.commandName)
+  if key then return key end
+  local painted = P.PaintedSpellCommand and P.PaintedSpellCommand(frame)
+  key = painted and P.FirstBindingKey(painted)
+  if key then return key end
+  if P.IsMouseKey(frame._sbDefaultKey) and P.MouseKeyCommand then
+    local cmd = P.MouseKeyCommand(frame._sbDefaultKey)
+    key = cmd and P.FirstBindingKey(cmd)
+    if key then return key end
+  end
+  return P.Text(frame._sbDefaultKey)
+end
+
 local function RefreshBindLabels()
   local function refresh(frame)
     if not (frame._sbBindId and frame.keyText) then return end
@@ -2611,25 +3287,7 @@ local function RefreshBindLabels()
     if (frame.tipKey == "+" or frame.keyText:GetText() == "+") and not P.Text(saved) then
       return
     end
-    local key
-    if saved == "" then
-      key = nil
-    elseif P.Text(saved) then
-      -- BIND's choice wins. Wheel/mouse live on MACRO/SPELL, so
-      -- GetBindingKey(CLICK / ACTIONBUTTON) still shows the old keyboard key.
-      key = saved
-    else
-      key = frame.commandName and GetBindingKey(frame.commandName)
-      if not key or key == "" then
-        local slot = P.BarSlotOf(frame)
-        if slot then key = GetBindingKey("ACTIONBUTTON" .. slot) end
-      end
-      if (not key or key == "") and P.IsMouseKey(frame._sbDefaultKey) and P.MouseKeyCommand then
-        local cmd = P.MouseKeyCommand(frame._sbDefaultKey)
-        if cmd then key = GetBindingKey(cmd) end
-      end
-      if not key or key == "" then key = frame._sbDefaultKey end
-    end
+    local key = P.LiveFaceKey(frame)
     if key and key ~= "" then
       local label = ShortKey(key) or PrettyKey(key) or key
       frame.keyText:SetText(label)
@@ -2747,9 +3405,18 @@ function P.FireableMouseCommand(frame, key)
   local function ok(cmd)
     return type(cmd) == "string" and cmd ~= "" and not cmd:find("^CLICK")
   end
-  local cmd
-  -- This icon's own command (ThornBloom), never the stock command of the
-  -- chord we're stealing (RushTotem on Shift-WheelUp).
+  local cmd = P.FormBindCommand and P.FormBindCommand(key)
+  if ok(cmd) then return cmd end
+  local hw = MOUSE_HARDWARE[key] or (frame._sbDefaultKey and MOUSE_HARDWARE[frame._sbDefaultKey])
+  local slot = (hw and tonumber(hw.slot)) or P.BarSlotOf(frame)
+  if P.UseMountBar and P.UseMountBar() and slot ~= 1 and slot ~= 2 and slot ~= 7 then
+    cmd = P.PackFaceCommand and P.PackFaceCommand(key)
+    if ok(cmd) then return cmd end
+  end
+  if P.ID(slot) and slot >= 1 and slot <= 12 then
+    cmd = "ACTIONBUTTON" .. slot
+    if ok(cmd) then return cmd end
+  end
   if P.IsMouseKey(frame._sbDefaultKey) then
     cmd = P.MouseKeyCommand(frame._sbDefaultKey)
     if ok(cmd) then return cmd end
@@ -2758,7 +3425,7 @@ function P.FireableMouseCommand(frame, key)
   if ok(cmd) then return cmd end
   cmd = P.AbilityMacroCommand(frame)
   if ok(cmd) then return cmd end
-  local slot = P.BindActionSlot(frame) or P.BarSlotOf(frame)
+  slot = P.BindActionSlot(frame) or slot
   if P.ID(slot) then
     cmd = P.ActionBindCommand(slot) or (slot <= 12 and ("ACTIONBUTTON" .. slot)) or nil
     if ok(cmd) then return cmd end
@@ -2870,9 +3537,13 @@ function AssignHoveredBind(frame, keyOrClear)
   local oldBinds = P.CopyData(SuperBindsDB.binds)
   local oldBarBinds = P.CopyData(SuperBindsDB.barBinds)
   local ok, err = pcall(function()
-    -- SetBinding already steals `key`. Clearing the command first wipes every
-    -- other key on that slot — Shift-WheelUp on ACTIONBUTTON5 / MACRO RushTotem.
+    -- SetBinding already steals `key`. Clearing an ACTIONBUTTON command first
+    -- wipes every other key on that slot — Shift-WheelUp on ACTIONBUTTON5.
+    -- Mouse used to skip all clearing, which left SPELL Wild Charge on Ctrl-E
+    -- after the same icon was given M5. Exclusive SPELL/MACRO keys of this
+    -- ability are always released; ACTIONBUTTON chords are not.
     if not mouseKey then ClearCommandKeys(command) end
+    P.ReleaseStaleBindKeys(frame, bindId, key, command)
     if key ~= "" and not SetBinding(key, command) then error("WoW rejected key " .. key) end
     for id, saved in pairs(SuperBindsDB.binds) do
       if key ~= "" and saved == key and id ~= bindId then SuperBindsDB.binds[id] = "" end
@@ -2959,9 +3630,22 @@ function P.RebindAll()
     for _, frame in ipairs(frames) do
       local id, command = frame._sbBindId, frame.commandName
       local saved = SuperBindsDB.binds[id]
+      if saved == "" then saved = nil end
       if id:match("^bar:") and saved == nil then
         local slot = id:match("^bar:(%d+)$")
         saved = (SuperBindsDB.barBinds or {})["ACTIONBUTTON" .. slot]
+        if saved == "" then saved = nil end
+      end
+      if id:match("^bar:") and not P._forcePackKeys then
+        local slot = id:match("^bar:(%d+)$")
+        local live = slot and GetBindingKey("ACTIONBUTTON" .. slot)
+        -- ConnectCastRoutes already wiped ACTIONBUTTON keys. An empty live
+        -- key is not a player choice; pack defaultKey (R) must still bind.
+        if P.Text(live) then
+          saved = live
+          SuperBindsDB.binds[id] = live
+          SuperBindsDB.barBinds["ACTIONBUTTON" .. slot] = live
+        end
       end
       if (saved ~= nil) == explicit then
         local key = saved
@@ -2988,6 +3672,13 @@ function P.RebindAll()
   end
   P.managedCommands = commands
   P.ForceMouseHardware()
+  P.BindPackBarKeys()
+  -- Apply / reload must not keep a previous BIND's SPELL key (Ctrl-E) after
+  -- the icon's saved hotkey moved (M5).
+  for _, frame in ipairs(frames) do
+    local keep = EffectiveKey(frame._sbBindId, frame._sbDefaultKey)
+    P.ReleaseStaleBindKeys(frame, frame._sbBindId, keep, frame.commandName)
+  end
   P.RestoreChatKeys()
   RefreshBindLabels()
 end
@@ -3154,6 +3845,14 @@ qkbWatch:SetScript("OnEvent", function(_, event)
       local saved = SuperBindsDB.binds[frame._sbBindId]
       if P.IsMouseKey(saved) then
         -- BIND's mouse/wheel choice is not on commandName. Do not overwrite it.
+      elseif frame._sbBindId and tostring(frame._sbBindId):match("^bar:(%d+)$") then
+        local slot = tonumber(tostring(frame._sbBindId):match("^bar:(%d+)$"))
+        local key = P.LiveFaceKey(frame) or (slot and P.FirstBindingKey("ACTIONBUTTON" .. slot))
+        if P.Text(key) then
+          SuperBindsDB.binds[frame._sbBindId] = key
+          SuperBindsDB.barBinds = SuperBindsDB.barBinds or {}
+          SuperBindsDB.barBinds["ACTIONBUTTON" .. slot] = key
+        end
       elseif not P.IsMouseKey(frame._sbDefaultKey) and not (frame._sbBindId and tostring(frame._sbBindId):find("BUTTON", 1, true))
         and not (frame._sbBindId and tostring(frame._sbBindId):find("WHEEL", 1, true))
         and not (frame._sbBindId and tostring(frame._sbBindId):match("^bar:")) then
@@ -3371,15 +4070,10 @@ function P.SelectFamilyHardware()
   end
   P.Visual.families = vis
   P.RestoreTotemWheelBinds()
-  if P.SyncSpecialBarState then P.SyncSpecialBarState() end
 end
 
 local function PackFormNow()
-  local pack = P.CurrentPack and P.CurrentPack()
-  if not pack then return "caster" end
-  local form = P.CurrentForm and P.CurrentForm()
-  if form and P.BarOwner then form = P.BarOwner(form) or form end
-  return form or pack.form or "caster"
+  return P.PackFormNow and P.PackFormNow()
 end
 
 function P.EachBarSlot(barEntry, fn)
@@ -3388,11 +4082,95 @@ function P.EachBarSlot(barEntry, fn)
   if not rel then return end
   if barEntry.allBars then
     for _, formName in ipairs(P.UniqueBarForms()) do
-      fn(P.ActionSlot(rel, formName) or rel)
+      local abs = P.ActionSlot(rel, formName)
+      if abs then fn(abs, formName) end
     end
     return
   end
-  fn(P.ActionSlot(rel, barEntry.form or PackFormNow()) or rel)
+  local formName = barEntry.form or PackFormNow()
+  local abs = P.ActionSlot(rel, formName)
+  if abs then fn(abs, formName) end
+end
+
+-- Write this family's primary onto the stance bar you are actually on.
+-- Drops must not PlaceID every form — leftover cursor swaps shuffle the bar.
+function P.PlaceFamilyPrimaryNow(tag, ability)
+  if Locked() or not P.Text(tag) then return false end
+  local spec = P.FamilyBarSpec and P.FamilyBarSpec(tag)
+  local rel = spec and tonumber(spec.slot)
+  if not rel then
+    spec = P.FamilyBarSpec and P.FamilyBarSpec(tag, P.PackNativeForm and P.PackNativeForm())
+    rel = spec and tonumber(spec.slot)
+  end
+  if not rel then return false end
+  local abs = (P.LiveActionSlot and P.LiveActionSlot(rel)) or P.ActionSlot(rel, PackFormNow())
+  if not abs then return false end
+  if P.IsEmptyPrimary and P.IsEmptyPrimary(ability) then
+    pcall(ClearCursor)
+    ClearSlot(abs)
+    return true
+  end
+  if type(ability) == "table" then
+    -- Live spellbook drop: PlaceAction the cursor you already have onto the
+    -- bear/cat page. PickupSpell(SBA) is why E never took Assisted Combat.
+    if P.CursorHasPickup and P.CursorHasPickup() then
+      return P.PlaceCursorOnSlot(abs)
+    end
+    pcall(ClearCursor)
+    return PlacePrimaryOnBar(abs, ability)
+  end
+  pcall(ClearCursor)
+  if spec.sba then return P.PlaceAssisted(abs) end
+  if spec.macro then
+    return PlaceMacro(abs, spec.macro[1], spec.macro[2], spec.macro[3])
+  end
+  if type(spec.spell) == "table" then
+    local _, id = Known(unpack(spec.spell))
+    if id then return PlaceID(abs, id) end
+  end
+  return false
+end
+
+-- Stock every stance page for this family (caster + cat + bear + moonkin).
+-- Restoring only PackFormNow() used to write page 1 and leave cat E as Attack.
+function P.PlaceFamilyStockAllForms(tag)
+  if Locked() or not P.Text(tag) then return false end
+  local pack = P.CurrentPack and P.CurrentPack()
+  local fam
+  for _, f in ipairs((pack and pack.families) or {}) do
+    if f.tag == tag then fam = f; break end
+  end
+  if not fam then return false end
+  local placed = {}
+  local function placeSpec(spec, formName)
+    if type(spec) ~= "table" then return false end
+    local rel = tonumber(spec.slot)
+    if not rel then return false end
+    local abs = P.ActionSlot(rel, formName)
+    if not abs then return false end
+    if placed[abs] then return false end
+    placed[abs] = true
+    pcall(ClearCursor)
+    if spec.sba then return P.PlaceAssisted(abs) end
+    if spec.macro then
+      return PlaceMacro(abs, spec.macro[1], spec.macro[2], spec.macro[3])
+    end
+    if type(spec.spell) == "table" then
+      local _, id = Known(unpack(spec.spell))
+      if id then return PlaceID(abs, id) end
+    end
+    return false
+  end
+  local any = false
+  if type(fam.bars) == "table" then
+    for formName, spec in pairs(fam.bars) do
+      if placeSpec(spec, formName) then any = true end
+    end
+  elseif fam.bar then
+    if placeSpec(fam.bar, PackFormNow()) then any = true end
+  end
+  pcall(ClearCursor)
+  return any
 end
 
 local function CopyItem(it)
@@ -3415,7 +4193,15 @@ local function BuildFamilies()
     }
     if type(fam.bars) == "table" then
       f.bars = fam.bars
-      f.bar = fam.bars[form] or fam.bar
+      f.bar = (form and fam.bars[form]) or fam.bar
+      if not f.bar then
+        for _, spec in pairs(fam.bars) do
+          if type(spec) == "table" and tonumber(spec.slot) then
+            f.bar = spec
+            break
+          end
+        end
+      end
     elseif fam.bar then
       f.bar = fam.bar
     end
@@ -3425,6 +4211,25 @@ local function BuildFamilies()
       end
     end
     families[#families + 1] = f
+  end
+  -- Skyriding Halt / Ascent belong on 1 and 2, not on Forms or Thorn.
+  local sky = P.SkyridingExtraKeys and P.SkyridingExtraKeys() or {}
+  if #sky > 0 then
+    local at = #families
+    for i, f in ipairs(families) do
+      if f.tag == "C" then at = i break end
+    end
+    for j, row in ipairs(sky) do
+      table.insert(families, at + j, {
+        tag = "SKY" .. row.key,
+        title = row.label .. " · " .. row.key,
+        caption = row.key,
+        items = {{
+          skyriding = true, bindKey = row.key, key = row.key,
+          label = row.label, name = row.name, id = row.id, iconFile = row.icon,
+        }},
+      })
+    end
   end
   return families
 end
@@ -3671,17 +4476,29 @@ function P.ApplyDurationCooldown(cd, kind, id)
 end
 
 function P.PaintAssistedFace(frame)
-  if not frame or not frame._ability or not P.IsAssistedAbility(frame._ability) then return end
+  if not frame or not frame._ability or not P.IsAssistedAbility(frame._ability)
+    or not P.NativeSlotIsAssisted(frame) then return end
   local cd = P.EnsureIconCooldown(frame)
   if cd then cd:Show() end
   if frame.icon then frame.icon:SetAlpha(1) end
   -- Do not read, compare, or unwrap the next-cast id. Pass it straight into
   -- texture/cooldown widgets so Midnight combat secrets still display.
+  -- Out of combat SBA often returns Auto Attack (6603) or nil; painting that
+  -- over the SBA plate looks like Attack and SBA fighting for the face.
   pcall(function()
     local spellID = C_AssistedCombat and C_AssistedCombat.GetNextCastSpell and C_AssistedCombat.GetNextCastSpell(false)
-    if frame.icon and C_Spell and C_Spell.GetSpellTexture then
-      frame.icon:SetTexture(C_Spell.GetSpellTexture(spellID))
+    if not InCombatLockdown() then
+      local pub = P.PublicNumber(spellID)
+      if not pub or pub == 6603 then spellID = SBA_ID end
     end
+    local tex
+    if frame.icon and C_Spell and C_Spell.GetSpellTexture then
+      tex = C_Spell.GetSpellTexture(spellID)
+    end
+    if (not tex or tex == 0) and frame.icon then
+      tex = SpellIcon(SBA_ID)
+    end
+    if frame.icon and tex then frame.icon:SetTexture(tex) end
     if cd and C_Spell and C_Spell.GetSpellCooldownDuration and cd.SetCooldownFromDurationObject then
       cd:SetCooldownFromDurationObject(C_Spell.GetSpellCooldownDuration(spellID), true)
     end
@@ -3722,6 +4539,522 @@ do
   w:RegisterEvent("PLAYER_ENTERING_WORLD")
   w:SetScript("OnEvent", function()
     if P.DriveIconCooldowns then P.DriveIconCooldowns() end
+    if P.DrivePressPulse then P.DrivePressPulse() end
+  end)
+end
+
+-- Timing hoop: combat-only GCD bezel. Native cooldown swipe, gold channel.
+-- Secret-safe: duration objects go straight into Cooldown.
+P.GCD_SPELL = 61304
+P.PULSE_FX = "Interface\\AddOns\\SuperBinds\\Media\\"
+P.PULSE_RING = 64
+P.PULSE_OPACITY_DEFAULT = 0.2
+
+function P.PulseOpacity()
+  local v = P.PublicNumber(SuperBindsDB.pulseOpacity)
+  if not v then v = P.PULSE_OPACITY_DEFAULT end
+  if v < 0.1 then v = 0.1 end
+  if v > 1 then v = 1 end
+  return v
+end
+
+function P.PulseOpacityPercent(value)
+  local n = P.PublicNumber(value)
+  if not n then n = tonumber(value) end
+  if not n then n = P.PulseOpacity() * 100 end
+  if n > 0 and n <= 1.0001 then n = n * 100 end
+  if n < 10 then n = 10 end
+  if n > 100 then n = 100 end
+  return n
+end
+
+function P.PulseGain()
+  local d = P.PULSE_OPACITY_DEFAULT
+  if d < 0.05 then d = 0.05 end
+  local g = P.PulseOpacity() / d
+  if g > 5 then g = 5 end
+  return g
+end
+
+function P.SettingsPanelShown()
+  local panel = _G.SettingsPanel
+  return panel and panel.IsShown and panel:IsShown() and true or false
+end
+
+function P.WatchSettingsPulsePreview()
+  if P._settingsPulseHooked then return end
+  local panel = _G.SettingsPanel
+  if not panel or not panel.HookScript then return end
+  P._settingsPulseHooked = true
+  panel:HookScript("OnHide", function()
+    if P.EndPulsePreview then P.EndPulsePreview() end
+  end)
+end
+
+function P.CommitPulseOpacity(value, preview)
+  P.EnsureDB()
+  SuperBindsDB.pulseOpacity = P.PulseOpacityPercent(value) / 100
+  if P.TunePressPulseChrome then P.TunePressPulseChrome() end
+  if preview ~= false and P.BeginPulsePreview then P.BeginPulsePreview() end
+end
+
+function P.ApplyPulseOpacity()
+  P.CommitPulseOpacity(P.PulseOpacityPercent(), true)
+end
+
+function P.PulsePreviewStrata(f, on)
+  f = f or P.pulse
+  if not f then return end
+  if on then
+    f:SetParent(UIParent)
+    f:SetFrameStrata("TOOLTIP")
+    f:SetFrameLevel(1000)
+    if f.SetToplevel then f:SetToplevel(true) end
+  else
+    f:SetFrameStrata("HIGH")
+    f:SetFrameLevel(80)
+    if f.SetToplevel then f:SetToplevel(false) end
+  end
+end
+
+function P.BeginPulsePreview()
+  if SuperBindsDB.showPressPulse == false then return end
+  P._pulsePreview = true
+  P._pulsePreviewUntil = (GetTime() or 0) + 6
+  P._pulsePreviewGen = (P._pulsePreviewGen or 0) + 1
+  local gen = P._pulsePreviewGen
+  local f = P.EnsurePressPulse()
+  if not f then return end
+  P.PulsePreviewStrata(f, true)
+  if f._sbHideAg then f._sbHideAg:Stop() end
+  f:SetAlpha(1)
+  f:Show()
+  P.TunePressPulseChrome()
+  if not f._sbCharging then P.StartPulseCharge() end
+  if C_Timer and C_Timer.After then
+    C_Timer.After(6, function()
+      if P._pulsePreviewGen ~= gen then return end
+      if P.SettingsPanelShown and P.SettingsPanelShown() then return end
+      P.EndPulsePreview()
+    end)
+  end
+end
+
+function P.PulseChrome()
+  local b = P.Visual and P.Visual.brass or {0.68, 0.55, 0.35}
+  local s = P.Visual and P.Visual.shine or {0.86, 0.73, 0.49}
+  local c = P.Visual and P.Visual.text or {0.94, 0.91, 0.83}
+  return b[1], b[2], b[3], s[1], s[2], s[3], c[1], c[2], c[3]
+end
+
+function P.PulseGuessGcd()
+  return P.PublicNumber(P.PULSE_GCD) or 1.5
+end
+
+function P.PulseLearnGcd(elapsed)
+  elapsed = P.PublicNumber(elapsed)
+  if not elapsed then return end
+  if elapsed < 0.55 or elapsed > 2.15 then return end
+  local cur = P.PublicNumber(P.PULSE_GCD) or elapsed
+  P.PULSE_GCD = cur * 0.4 + elapsed * 0.6
+end
+
+function P.PulseLight(parent, layer, file, dim, r, g, b, a, blend)
+  local t = parent:CreateTexture(nil, layer)
+  t:SetSize(dim, dim)
+  t:SetPoint("CENTER")
+  t:SetTexture(file)
+  t:SetBlendMode(blend or "ADD")
+  t:SetVertexColor(r, g, b, a)
+  if P.SmoothUITexture then P.SmoothUITexture(t) end
+  t:Hide()
+  return t
+end
+
+function P.PulseBurst(parent, file, dim, r, g, b, duration, fromScale, toScale, delay, ox, oy)
+  local holder = CreateFrame("Frame", nil, parent)
+  holder:SetPoint("CENTER", ox or 0, oy or 0)
+  holder:SetSize(dim, dim)
+  holder:SetFrameLevel(parent:GetFrameLevel() + 14)
+  holder:Hide()
+  local t = holder:CreateTexture(nil, "OVERLAY")
+  t:SetAllPoints()
+  t:SetTexture(file)
+  t:SetBlendMode("ADD")
+  t:SetVertexColor(r, g, b, 1)
+  if P.SmoothUITexture then P.SmoothUITexture(t) end
+  local ag = holder:CreateAnimationGroup()
+  local fade = ag:CreateAnimation("Alpha")
+  fade:SetFromAlpha(1)
+  fade:SetToAlpha(0)
+  fade:SetDuration(duration)
+  fade:SetSmoothing("OUT")
+  if delay and delay > 0 then fade:SetStartDelay(delay) end
+  local scale = ag:CreateAnimation("Scale")
+  if scale.SetScaleTo then
+    scale:SetScaleFrom(fromScale, fromScale)
+    scale:SetScaleTo(toScale, toScale)
+  else
+    scale:SetScale(toScale, toScale)
+  end
+  scale:SetDuration(duration)
+  scale:SetSmoothing("OUT")
+  if delay and delay > 0 then scale:SetStartDelay(delay) end
+  ag:SetScript("OnPlay", function() holder:Show() end)
+  ag:SetScript("OnFinished", function() holder:Hide() end)
+  return ag
+end
+
+function P.PulseMkAlpha(frame, fromA, toA, dur, smooth)
+  local ag = frame:CreateAnimationGroup()
+  local a = ag:CreateAnimation("Alpha")
+  a:SetFromAlpha(fromA or 0)
+  a:SetToAlpha(toA or 1)
+  a:SetDuration(dur or 0.2)
+  if a.SetSmoothing then pcall(a.SetSmoothing, a, smooth or "OUT") end
+  ag._sbA = a
+  return ag
+end
+
+function P.EndPulsePreview()
+  if not P._pulsePreview then return end
+  P._pulsePreview = false
+  P.PulsePreviewStrata(P.pulse, false)
+  if P.ApplyPressPulseShown then P.ApplyPressPulseShown() end
+end
+
+function P.PulseIdleBreath(on)
+  local f = P.pulse
+  if not f or not f._sbBreath then return end
+  if on and P.PulseShouldShow() and not f._sbCharging then
+    if not f._sbBreath:IsPlaying() then f._sbBreath:Play() end
+  else
+    f._sbBreath:Stop()
+    if f._sbGlowHold then f._sbGlowHold:SetAlpha(1) end
+  end
+end
+
+function P.PulseFade(f, show)
+  if not f then return end
+  if show then
+    if f._sbHideAg then f._sbHideAg:Stop() end
+    f:Show()
+    local cur = f:GetAlpha() or 0
+    if cur > 0.97 then
+      f:SetAlpha(1)
+      P.PulseIdleBreath(true)
+      return
+    end
+    if f._sbShowAg and f._sbShowAg._sbA then
+      f._sbShowAg._sbA:SetFromAlpha(cur)
+      f._sbShowAg._sbA:SetToAlpha(1)
+      f._sbShowAg:Play()
+    else
+      f:SetAlpha(1)
+    end
+    P.PulseIdleBreath(true)
+    return
+  end
+  if f._sbShowAg then f._sbShowAg:Stop() end
+  P.PulseIdleBreath(false)
+  if f._sbCharging then P.StopPulseCharge() end
+  local cur = f:GetAlpha() or 0
+  if cur < 0.03 or not f:IsShown() then
+    f:SetAlpha(0)
+    f:Hide()
+    return
+  end
+  if f._sbHideAg and f._sbHideAg._sbA then
+    f._sbHideAg._sbA:SetFromAlpha(cur)
+    f._sbHideAg._sbA:SetToAlpha(0)
+    f._sbHideAg:Play()
+  else
+    f:SetAlpha(0)
+    f:Hide()
+  end
+end
+
+function P.EnsurePressPulse()
+  if P.pulse then return P.pulse end
+  local fx = P.PULSE_FX
+  local dim = P.PULSE_RING
+  local f = CreateFrame('Frame', 'SuperBindsPressPulse', UIParent)
+  f:SetSize(dim, dim)
+  f:SetFrameStrata('HIGH')
+  f:SetFrameLevel(80)
+  f:SetMovable(true)
+  f:SetClampedToScreen(true)
+  f:EnableMouse(true)
+  f:SetAlpha(0)
+  f:RegisterForDrag('LeftButton')
+  f:SetScript('OnDragStart', function(self) self:StartMoving() end)
+  f:SetScript('OnDragStop', function(self)
+    self:StopMovingOrSizing()
+    SavePosition('pulse', self)
+  end)
+
+  local cd = CreateFrame('Cooldown', 'SuperBindsPressPulseCD', f, 'CooldownFrameTemplate')
+  cd:SetAllPoints()
+  cd:EnableMouse(false)
+  cd:SetAlpha(1)
+  if cd.SetDrawSwipe then cd:SetDrawSwipe(true) end
+  if cd.SetDrawEdge then cd:SetDrawEdge(true) end
+  if cd.SetDrawBling then cd:SetDrawBling(false) end
+  if cd.SetHideCountdownNumbers then cd:SetHideCountdownNumbers(true) end
+  if cd.SetUseCircularEdge then pcall(cd.SetUseCircularEdge, cd, true) end
+  if cd.SetReverse then pcall(cd.SetReverse, cd, false) end
+  if cd.SetSwipeTexture then pcall(cd.SetSwipeTexture, cd, fx .. "PulseSwipe") end
+  if cd.SetSwipeColor then pcall(cd.SetSwipeColor, cd, 0.22, 0.16, 0.08, 0.27) end
+  if cd.SetEdgeTexture then pcall(cd.SetEdgeTexture, cd, fx .. "PulseEdge") end
+  if cd.SetEdgeScale then pcall(cd.SetEdgeScale, cd, 0.72) end
+  cd:Hide()
+  cd:SetScript('OnCooldownDone', function(self)
+    if not self._sbPulseArmed then return end
+    self._sbPulseArmed = false
+    local hoop = P.pulse
+    if hoop and hoop._sbHandStart then P.PulseLearnGcd(GetTime() - hoop._sbHandStart) end
+    if P.StopPulseCharge then P.StopPulseCharge() end
+    if P.FlashPressPulse then P.FlashPressPulse() end
+    if P._pulsePreview and P.PulseShouldShow and P.PulseShouldShow() then
+      if C_Timer and C_Timer.After then
+        C_Timer.After(0.18, function()
+          if P._pulsePreview and P.StartPulseCharge then P.StartPulseCharge() end
+        end)
+      end
+    end
+  end)
+  f.cooldown = cd
+
+  local glowHold = CreateFrame('Frame', nil, f)
+  glowHold:SetAllPoints()
+  glowHold:EnableMouse(false)
+  glowHold:SetFrameLevel(f:GetFrameLevel() + 7)
+  f._sbGlowHold = glowHold
+  local glow = glowHold:CreateTexture(nil, 'ARTWORK')
+  glow:SetPoint('CENTER')
+  glow:SetSize(dim + 8, dim + 8)
+  glow:SetTexture(fx .. 'PulseGlow')
+  glow:SetBlendMode('ADD')
+  glow:SetVertexColor(0.90, 0.76, 0.42, 1)
+  if P.SmoothUITexture then P.SmoothUITexture(glow) end
+  f._sbGlow = glow
+  local breath = glowHold:CreateAnimationGroup()
+  breath:SetLooping('REPEAT')
+  local bIn = breath:CreateAnimation('Alpha')
+  bIn:SetFromAlpha(0.70)
+  bIn:SetToAlpha(1)
+  bIn:SetDuration(1.40)
+  bIn:SetOrder(1)
+  if bIn.SetSmoothing then pcall(bIn.SetSmoothing, bIn, 'IN_OUT') end
+  local bOut = breath:CreateAnimation('Alpha')
+  bOut:SetFromAlpha(1)
+  bOut:SetToAlpha(0.70)
+  bOut:SetDuration(1.65)
+  bOut:SetOrder(2)
+  if bOut.SetSmoothing then pcall(bOut.SetSmoothing, bOut, 'IN_OUT') end
+  f._sbBreath = breath
+
+  local bezelHold = CreateFrame('Frame', nil, f)
+  bezelHold:SetAllPoints()
+  bezelHold:EnableMouse(false)
+  bezelHold:SetFrameLevel(f:GetFrameLevel() + 6)
+  f._sbBezelHold = bezelHold
+  local bezel = bezelHold:CreateTexture(nil, 'OVERLAY')
+  bezel:SetAllPoints()
+  bezel:SetTexture(fx .. 'PulseBezel')
+  bezel:SetBlendMode('BLEND')
+  bezel:SetVertexColor(0.84, 0.70, 0.42, 1)
+  if P.SmoothUITexture then P.SmoothUITexture(bezel) end
+  f._sbBezel = bezel
+
+  local readyHold = CreateFrame('Frame', nil, f)
+  readyHold:SetAllPoints()
+  readyHold:EnableMouse(false)
+  readyHold:SetFrameLevel(f:GetFrameLevel() + 8)
+  readyHold:SetAlpha(0)
+  f._sbReadyHold = readyHold
+  local readyTex = readyHold:CreateTexture(nil, 'OVERLAY')
+  readyTex:SetAllPoints()
+  readyTex:SetTexture(fx .. 'PulseReady')
+  readyTex:SetBlendMode('ADD')
+  readyTex:SetVertexColor(0.94, 0.88, 0.62, 1)
+  if P.SmoothUITexture then P.SmoothUITexture(readyTex) end
+  f._sbReadyTex = readyTex
+  f._sbReadyAg = P.PulseMkAlpha(readyHold, 0.22, 0, 0.36, "OUT")
+
+  f._sbShowAg = P.PulseMkAlpha(f, 0, 1, 0.20, "OUT")
+  if f._sbShowAg.SetToFinalAlpha then f._sbShowAg:SetToFinalAlpha(true) end
+  f._sbShowAg:SetScript('OnPlay', function() f:Show() end)
+  f._sbShowAg:SetScript('OnFinished', function() f:SetAlpha(1) end)
+  f._sbHideAg = P.PulseMkAlpha(f, 1, 0, 0.28, "OUT")
+  if f._sbHideAg.SetToFinalAlpha then f._sbHideAg:SetToFinalAlpha(true) end
+  f._sbHideAg:SetScript('OnFinished', function()
+    f:SetAlpha(0)
+    f:Hide()
+    P.PulseIdleBreath(false)
+  end)
+
+  f:SetScript('OnEnter', function(self)
+    GameTooltip:SetOwner(self, 'ANCHOR_RIGHT')
+    GameTooltip:SetText("Timing ring")
+    GameTooltip:AddLine("Shows in combat. After a press, a pip rides the gold trim with the global cooldown. When the sweep clears, the next key is ready. Drag to move.", 0.82, 0.86, 0.84, true)
+    GameTooltip:Show()
+  end)
+  f:SetScript('OnLeave', function() GameTooltip:Hide() end)
+
+  P.pulse = f
+  P.PlacePressPulse()
+  P.ApplyPressPulseShown()
+  return f
+end
+
+function P.PlacePressPulse()
+  local f = P.pulse
+  if not f then return end
+  local saved = SuperBindsDB.pos and SuperBindsDB.pos.pulse
+  f:ClearAllPoints()
+  if type(saved) == "table" and saved[1] and P.Number(saved[3]) and P.Number(saved[4]) then
+    f:SetPoint(saved[1], UIParent, saved[2], saved[3], saved[4])
+  else
+    f:SetPoint("CENTER", UIParent, "CENTER", 0, -36)
+  end
+end
+
+function P.PulseShouldShow()
+  if SuperBindsDB.showPressPulse == false then return false end
+  if P._pulsePreview then return true end
+  if P.HUDMapOpen and P.HUDMapOpen() then return false end
+  return P.regenCombat == true
+end
+
+function P.StartPulseCharge()
+  local f = P.pulse
+  if not f or not P.PulseShouldShow() then return end
+  f._sbCharging = true
+  f._sbGcdLen = P.PulseGuessGcd()
+  f._sbHandStart = GetTime()
+  P.PulseIdleBreath(false)
+  P.TunePressPulseChrome()
+  local cd = f.cooldown
+  if cd then
+    cd._sbPulseArmed = true
+    cd:Show()
+    if P._pulsePreview then
+      local dur = f._sbGcdLen or 1.5
+      pcall(cd.SetCooldown, cd, GetTime(), dur)
+    end
+  end
+  f:Show()
+end
+
+function P.StopPulseCharge()
+  local f = P.pulse
+  if not f then return end
+  local was = f._sbCharging
+  f._sbCharging = false
+  local cd = f.cooldown
+  if cd then
+    if cd.Clear then pcall(cd.Clear, cd) end
+    cd:Hide()
+  end
+  if was then P.PulseIdleBreath(true) end
+end
+
+function P.TunePressPulseChrome()
+  local f = P.pulse
+  if not f then return end
+  local on = P.PulseShouldShow()
+  f:EnableMouse(on)
+  if f.SetMouseClickThrough then pcall(f.SetMouseClickThrough, f, not on) end
+  local g = P.PulseGain()
+  local fade = 0.85
+  local br, bg, bb, sr, sg, sb, cr, cg, cb = P.PulseChrome()
+  local bezelA = 0.4 * fade * g
+  if bezelA > 1 then bezelA = 1 end
+  local glowA = 0.15 * fade * g
+  if glowA > 0.42 then glowA = 0.42 end
+  if f._sbGlow then
+    f._sbGlow:SetVertexColor(sr * 0.72 + cr * 0.28, sg * 0.72 + cg * 0.28, sb * 0.72 + cb * 0.28, 1)
+    f._sbGlow:SetAlpha(glowA)
+    f._sbGlow:Show()
+  end
+  if f._sbBezel then
+    f._sbBezel:SetVertexColor(br * 0.42 + sr * 0.58, bg * 0.42 + sg * 0.58, bb * 0.42 + sb * 0.58, 1)
+    f._sbBezel:SetAlpha(bezelA)
+    f._sbBezel:Show()
+  end
+  if f._sbWell then f._sbWell:Hide() end
+  if f._sbReadyTex then
+    f._sbReadyTex:SetVertexColor(cr, cg, cb, 1)
+  end
+  local cd = f.cooldown
+  if cd and cd.SetSwipeColor then
+    local sa = (0.26 + 0.06 * g) * fade
+    if sa > 0.42 then sa = 0.42 end
+    pcall(cd.SetSwipeColor, cd, br * 0.55, bg * 0.55, bb * 0.55, sa)
+  end
+end
+
+function P.ApplyPressPulseShown()
+  local f = P.EnsurePressPulse()
+  if not f then return end
+  if P._pulsePreview then
+    P.PulsePreviewStrata(f, true)
+    if f._sbHideAg then f._sbHideAg:Stop() end
+    f:SetAlpha(1)
+    f:Show()
+    P.TunePressPulseChrome()
+    if not f._sbCharging then P.StartPulseCharge() end
+    return
+  end
+  P.PulsePreviewStrata(f, false)
+  local want = P.PulseShouldShow()
+  P.TunePressPulseChrome()
+  if want then
+    P.PulseFade(f, true)
+    P.DrivePressPulse()
+    return
+  end
+  P.PulseFade(f, false)
+end
+
+function P.FlashPressPulse()
+  local f = P.pulse
+  if not f or not f:IsShown() then return end
+  local ag = f._sbReadyAg
+  if ag then
+    ag:Stop()
+    if f._sbReadyHold then f._sbReadyHold:SetAlpha(1) end
+    ag:Play()
+  end
+end
+
+function P.NotePressPulseCast(spellID)
+  if spellID == nil then return end
+  if not P.PulseShouldShow or not P.PulseShouldShow() then return end
+  P._pulseCast = spellID
+  local f = P.pulse or P.EnsurePressPulse()
+  if f and f.cooldown then f.cooldown._sbPulseArmed = true end
+  P.StartPulseCharge()
+  if P.DrivePressPulse then P.DrivePressPulse() end
+end
+
+function P.DrivePressPulse()
+  if not P.PulseShouldShow or not P.PulseShouldShow() then return end
+  local f = P.pulse or P.EnsurePressPulse()
+  if not f or not f:IsShown() then return end
+  if P._pulsePreview then return end
+  P.TunePressPulseChrome()
+  local cd = f.cooldown
+  if not cd then return end
+  cd:Show()
+  pcall(function()
+    if C_Spell and C_Spell.GetSpellCooldownDuration and cd.SetCooldownFromDurationObject then
+      cd:SetCooldownFromDurationObject(C_Spell.GetSpellCooldownDuration(P.GCD_SPELL), true)
+      return
+    end
+    local start, dur, modRate = P.ReadIconCooldown("spell", P.GCD_SPELL)
+    cd:SetCooldown(start, dur, modRate)
   end)
 end
 
@@ -3774,18 +5107,10 @@ end
 
 function P.IconIsAssistedSBA(frame)
   local ab = frame and frame._ability
-  if ab and ab.sba then return true end
-  local id = P.ID(P.PublicNumber(frame and frame.spellID))
-  if not id then return false end
-  if id == SBA_ID then return true end
-  local actionID
-  pcall(function()
-    if C_AssistedCombat and C_AssistedCombat.GetActionSpell then
-      actionID = C_AssistedCombat.GetActionSpell()
-    end
-  end)
-  actionID = P.ID(P.PublicNumber(actionID))
-  return actionID and id == actionID
+  if ab and P.IsAssistedAbility(ab) then return true end
+  local abs = frame and frame.GetAttribute and P.ID(frame:GetAttribute("action"))
+  if abs and P.ActionIsAssisted and P.ActionIsAssisted(abs) then return true end
+  return P.IsAssistedAbility(frame and frame.spellID)
 end
 
 function P.IconMatchesNextCast(frame, nextID)
@@ -5396,9 +6721,14 @@ local function SetTabFace(tab, primary)
   P.ClearAction(tab)
   tab._sbBindId, tab.commandName, tab._sbDefaultKey = nil, nil, nil
   tab.spellID, tab.itemID, tab.tipText, tab.tipKey = nil, nil, nil, nil
-  if not primary then
+  if not primary or (P.IsEmptyPrimary and P.IsEmptyPrimary(primary)) then
     tab.icon:SetTexture(134400)
-    if tab.keyText then tab.keyText:SetText("") end
+    local key = primary and (ShortKey(primary.key) or primary.key) or ""
+    if tab.keyText then
+      StyleKeyText(tab.keyText)
+      tab.keyText:SetText(key)
+    end
+    tab.tipKey = (key ~= "") and key or nil
     return
   end
   tab.icon:SetTexture(primary.icon or 134400)
@@ -5478,11 +6808,15 @@ local function CursorAbility()
       pcall(function() raw = SpellName(id) end)
       name = P.Text(raw)
     end
+    if P.IsAssistedAbility(id, name) or P.IsAssistedToken(id) or P.IsAssistedToken(name) then
+      return P.AssistedAbility()
+    end
     if not name then return nil end
     local pubId = P.ID(P.PublicNumber(id))
     if not pubId and type(info) == "table" then pubId = P.ID(P.PublicNumber(info.spellID)) end
     if not pubId then pubId = BOOK[name] end
-    return { kind = "spell", name = name, id = pubId, label = name, icon = SpellIcon(pubId, name) or icon or 134400, sba = P.IsAssistedAbility(pubId, name) or nil }
+    if P.IsAssistedAbility(pubId, name) then return P.AssistedAbility() end
+    return { kind = "spell", name = name, id = pubId, label = name, icon = SpellIcon(pubId, name) or icon or 134400 }
   end
   local function fromBookSlot(slot)
     if not P.ID(slot) then return nil end
@@ -5502,9 +6836,13 @@ local function CursorAbility()
   if ctype == "action" then
     local slot = P.ID(pub(a))
     if not slot then return nil end
-    local actionType, id
-    pcall(function() actionType, id = GetActionInfo(slot) end)
+    if P.ActionIsAssisted and P.ActionIsAssisted(slot) then return P.AssistedAbility() end
+    local actionType, id, sub
+    pcall(function() actionType, id, sub = GetActionInfo(slot) end)
     actionType = pub(actionType)
+    if P.IsAssistedToken(actionType) or P.IsAssistedToken(id) or P.IsAssistedToken(pub(sub)) then
+      return P.AssistedAbility()
+    end
     if actionType == "spell" then return fromSpellID(id) end
     if actionType == "macro" then
       local name, icon, body = GetMacroInfo(P.ID(pub(id)) or id)
@@ -5522,7 +6860,11 @@ local function CursorAbility()
     return nil
   end
   if ctype == "spell" then
+    if P.CursorIsAssisted and P.CursorIsAssisted() then return P.AssistedAbility() end
     local pubSpell, pubA, pubB = pub(spellID), pub(a), pub(b)
+    if P.IsAssistedToken(pubSpell) or P.IsAssistedToken(pubA) or P.IsAssistedToken(pubB) then
+      return P.AssistedAbility()
+    end
     if P.ID(pubSpell) then return fromSpellID(pubSpell) end
     if pubB == "spell" or pubB == "pet" then
       local fromSlot = fromBookSlot(pubA)
@@ -5531,6 +6873,8 @@ local function CursorAbility()
     local fromRaw = fromSpellID(spellID)
     if fromRaw then return fromRaw end
     if pubB ~= "spell" and pubB ~= "pet" then return fromSpellID(a) end
+    -- Secret SBA from the rune book: book slot + id both fail closed.
+    if P.CursorIsAssisted and P.CursorIsAssisted() then return P.AssistedAbility() end
     return nil
   end
   if ctype == "item" then
@@ -5794,7 +7138,14 @@ end
 
 local function SameAbility(a, b)
   local ak, bk = P.AbilityKey(a), P.AbilityKey(b)
-  return ak ~= nil and ak == bk
+  if ak ~= nil and ak == bk then return true end
+  a, b = NormalizeAbility(a), NormalizeAbility(b)
+  if not a or not b then return false end
+  if a.sba and b.sba then return true end
+  local an = P.Text(a.name) or P.Text(a.label)
+  local bn = P.Text(b.name) or P.Text(b.label)
+  if an and bn and an:lower() == bn:lower() then return true end
+  return false
 end
 
 local function AbilitySnapshot(ab)
@@ -5948,38 +7299,46 @@ local function AddExtra(tag, ability, quiet)
   return true
 end
 
+function P.IsEmptyPrimary(ab)
+  return ab == false or (type(ab) == "table" and ab.empty == true)
+end
+
+function P.EmptyPrimary()
+  return { empty = true, kind = "empty", name = "Empty", label = "Empty", icon = 134400 }
+end
+
 function P.CustomPrimaryFor(tag, form)
   if not P.Text(tag) then return nil end
   local c = SuperBindsDB.custom and SuperBindsDB.custom[tag]
   if type(c) ~= "table" then return nil end
   form = form or PackFormNow()
-  if type(c.formPrimary) == "table" and form and c.formPrimary[form] then
+  if type(c.formPrimary) == "table" and form and c.formPrimary[form] ~= nil then
     return c.formPrimary[form]
   end
-  local p = c.primary
-  if not p then return nil end
-  if P.FamilyHasBars(tag) then
-    if P.IsAssistedAbility(p) then
-      local native = P.PackNativeForm and P.PackNativeForm()
-      if form and native and form ~= native then return nil end
-    elseif form and form ~= PackFormNow() then
-      return nil
-    end
-  end
-  return p
+  -- Form-bar families are stock per stance. A leftover global c.primary
+  -- (old Attack↔SBA swap) must not paint every face.
+  if P.FamilyHasBars(tag) then return nil end
+  return c.primary
 end
 
 function P.MigrateFormPrimary(tag)
   if not P.Text(tag) or not P.FamilyHasBars(tag) then return end
   local c = SuperBindsDB.custom and SuperBindsDB.custom[tag]
-  if type(c) ~= "table" or not c.primary then return end
+  if type(c) ~= "table" then return end
   if type(c.formPrimary) == "table" then
     for _, ab in pairs(c.formPrimary) do
-      if ab then return end
+      if ab then
+        c.primary = nil
+        return
+      end
     end
   end
+  if not c.primary then return end
   local p = NormalizeAbility(c.primary)
-  if not p then return end
+  if not p then
+    c.primary = nil
+    return
+  end
   local form
   if P.IsAssistedAbility(p) then
     form = (P.PackNativeForm and P.PackNativeForm()) or PackFormNow()
@@ -5998,7 +7357,7 @@ local function SetCustomPrimary(tag, ability, quiet)
   local c = EnsureCustom(tag)
   ability = NormalizeAbility(ability) or AbilitySnapshot(ability)
   if P.FamilyHasBars(tag) then
-    local form = PackFormNow()
+    local form = PackFormNow() or (P.PackNativeForm and P.PackNativeForm())
     if not form then return false end
     c.formPrimary = c.formPrimary or {}
     c.formPrimary[form] = ability
@@ -6013,6 +7372,60 @@ local function SetCustomPrimary(tag, ability, quiet)
   if not quiet then
     print("|cff0070ddSuper Binds:|r " .. tag .. " primary is now |cffffffff" .. (ability.label or "?") .. "|r")
   end
+  return true
+end
+
+-- Spellbook / rune-book drop: PlaceAction the live cursor onto this form's
+-- absolute slot, then log formPrimary from the slot. Overlay is not the
+-- drop authority. Do not PickupSpell(SBA) — Assisted Combat is not a normal spell.
+function P.CommitCursorToTab(tab, force)
+  if Locked() or not tab or not P.Text(tab.famTag) then return false end
+  if P._placingCursor then return false end
+  if not force then
+    if not (P.CursorHasPickup and P.CursorHasPickup())
+      and not (P.CursorIsAssisted and P.CursorIsAssisted()) then
+      return false
+    end
+  end
+  local rel = tonumber(tab.GetAttribute and tab:GetAttribute("relslot"))
+  if not rel then
+    local spec = P.FamilyBarSpec and P.FamilyBarSpec(tab.famTag)
+    rel = spec and tonumber(spec.slot)
+  end
+  local abs = (rel and P.LiveActionSlot and P.LiveActionSlot(rel))
+    or P.ID(tab.GetAttribute and tab:GetAttribute("action"))
+  if not abs then return false end
+  P._placingCursor = true
+  local displaced = tab._ability and NormalizeAbility(tab._ability)
+  PlaceAction(abs)
+  KEEP[abs] = true
+  pcall(ClearCursor)
+  local placed
+  if P.ActionIsAssisted and P.ActionIsAssisted(abs) then
+    placed = P.AssistedAbility()
+  else
+    placed = P.NativeAbility and P.NativeAbility(abs)
+  end
+  if not placed then
+    P._placingCursor = false
+    return false
+  end
+  SetCustomPrimary(tab.famTag, placed, true)
+  if displaced and P.AbilityKey(displaced) ~= P.AbilityKey(placed) then
+    AddExtra(tab.famTag, displaced, true)
+  end
+  P._placingCursor = false
+  local into = P.Visual.families[tab.famTag] or tab.famTag
+  local notice = (placed.label or placed.name or "Ability") .. " on " .. into
+  if displaced then
+    notice = notice .. " · " .. (displaced.label or displaced.name or "Ability") .. " moved to the family"
+  end
+  P.dropRefreshQueued = true
+  C_Timer.After(0, function()
+    P.dropRefreshQueued = false
+    if RefreshLayout then RefreshLayout(true) end
+    if P.DropNotice then P.DropNotice(notice) end
+  end)
   return true
 end
 
@@ -6064,12 +7477,13 @@ function P.ResolveBarBind(frame, key)
   local ability = NormalizeAbility and NormalizeAbility(frame._ability) or frame._ability
   local extraKey = frame._sbBindKey or frame._sbDefaultKey
   local columnKey = spec.bindKey or spec.key
-  local onOtherBar = ability and select(1, P.AbilityIsFamilyBarSpell(tag, ability))
-  local promote = isBarFace or onOtherBar or not P.Text(extraKey)
-    or (P.Text(columnKey) and key == columnKey)
+  -- Column face, or BIND the column's own key on a drawer extra (make it
+  -- the parent). A new extra has no extraKey — that must not steal the
+  -- family slot or whoever currently owns the pressed key.
+  local promote = isBarFace
+    or (P.Text(key) and P.Text(columnKey) and key == columnKey)
   if P.IsMouseKey(key) then
-    -- Mouse buttons ignore ACTIONBUTTON/CLICK. Bind the painted spell, not
-    -- page-1 GetActionInfo(bar:2) which is caster Roots while you are in cat.
+    if slot then return barId, "ACTIONBUTTON" .. slot end
     local cmd = P.PaintedSpellCommand(frame)
     if P.Text(cmd) then return frame._sbBindId, cmd end
     return
@@ -6077,7 +7491,19 @@ function P.ResolveBarBind(frame, key)
   if P.Text(key) then
     if not promote then return end
     if ability and not isBarFace then
+      local prev = P.CustomPrimaryFor and P.CustomPrimaryFor(tag)
+      if not prev then
+        local i
+        for i = 1, #(consoleTabs or {}) do
+          local tab = consoleTabs[i]
+          if tab and tab.famTag == tag and tab._ability then
+            prev = tab._ability
+            break
+          end
+        end
+      end
       SetCustomPrimary(tag, ability, true)
+      if prev and not SameAbility(prev, ability) then AddExtra(tag, prev, true) end
       P._bindPromoted = true
     end
     if ability then
@@ -6164,11 +7590,23 @@ local function ExtraUnderMouse()
   end
 end
 
-local function VacateSource(fromTag, fromKey, fromPrimary, ability)
+local function VacateSource(fromTag, fromKey, fromPrimary, ability, emptySlot)
   local changed = false
   if fromPrimary then
+    if type(ability) == "table" and ability.equipmentSlot then return false end
+    local form = PackFormNow() or (P.PackNativeForm and P.PackNativeForm())
+    if emptySlot then
+      if not form then return false end
+      local c = EnsureCustom(fromTag)
+      c.formPrimary = c.formPrimary or {}
+      c.formPrimary[form] = P.EmptyPrimary()
+      if fromKey then ClearModAbility(fromKey) end
+      if P.PlaceFamilyPrimaryNow then
+        P.PlaceFamilyPrimaryNow(fromTag, c.formPrimary[form])
+      end
+      return true
+    end
     local c = EnsureCustom(fromTag)
-    local form = PackFormNow()
     if form and type(c.formPrimary) == "table" and c.formPrimary[form] then
       c.formPrimary[form] = nil
       changed = true
@@ -6184,6 +7622,21 @@ local function VacateSource(fromTag, fromKey, fromPrimary, ability)
   end
   if fromKey then changed = ClearModAbility(fromKey) or changed end
   changed = RemoveExtra(fromTag, ability, true) or changed
+  -- The extra they yanked may be the ability that replaced the parent.
+  -- Removing it from the drawer used to leave formPrimary (and the bar) stuck.
+  local form = PackFormNow()
+  local c = SuperBindsDB.custom and SuperBindsDB.custom[fromTag]
+  if type(c) == "table" then
+    if form and type(c.formPrimary) == "table" and SameAbility(c.formPrimary[form], ability) then
+      c.formPrimary[form] = nil
+      changed = true
+      print("|cff0070ddSuper Binds:|r " .. fromTag .. " primary reset to stock.")
+    elseif SameAbility(c.primary, ability) then
+      c.primary = nil
+      changed = true
+      print("|cff0070ddSuper Binds:|r " .. fromTag .. " primary reset to stock.")
+    end
+  end
   return changed
 end
 
@@ -6213,9 +7666,17 @@ local function SwapSlots(src, dest)
   if dest.key and not CanPlaceOnKey(dest.key, a, newNomod) then return false end
   if src.key and not CanPlaceOnKey(src.key, b, newNomod) then return false end
 
+  local function columnKey(tag, key)
+    if not key or not P.FamilyHasBars(tag) then return false end
+    local spec = P.FamilyBarSpec(tag)
+    return type(spec) == "table" and (key == spec.key or key == spec.bindKey)
+  end
+
   if dest.primary then
-    SetCustomPrimary(dest.tag, a, true)
-    if dest.key then SetModAbility(dest.key, a, true, newNomod) end
+    if not SetCustomPrimary(dest.tag, a, true) then return false end
+    if dest.key and not columnKey(dest.tag, dest.key) then
+      SetModAbility(dest.key, a, true, newNomod)
+    end
   elseif dest.key then
     SetModAbility(dest.key, a, true, newNomod)
   elseif dest.added then
@@ -6226,8 +7687,10 @@ local function SwapSlots(src, dest)
   end
 
   if src.primary then
-    SetCustomPrimary(src.tag, b, true)
-    if src.key then SetModAbility(src.key, b, true, newNomod) end
+    if not SetCustomPrimary(src.tag, b, true) then return false end
+    if src.key and not columnKey(src.tag, src.key) then
+      SetModAbility(src.key, b, true, newNomod)
+    end
   elseif src.key then
     SetModAbility(src.key, b, true, newNomod)
   elseif src.added then
@@ -6261,7 +7724,6 @@ function P.FinishDragImpl()
   local extra = ExtraUnderMouse()
   local tab = TabUnderMouse()
   local menu = MenuUnderMouse()
-  local onRail = P.dropRail and P.dropRail:IsMouseOver()
   local fromTag = drag.fromTag
   local fromKey = drag.bindKey
   local fromPrimary = drag.fromPrimary
@@ -6288,6 +7750,7 @@ function P.FinishDragImpl()
   local destTag = (extra and extra.famTag) or (plus and plus.famTag) or (tab and tab.famTag) or (menu and menu.famTag)
   local sameBar = fromTag and destTag and fromTag == destTag
   local srcAb = AbilitySnapshot(ability)
+  local slotAlreadyPlaced = false
 
   -- Dropping a slot on itself is a no-op.
   if extra and sameBar and fromKey and extra._sbBindKey == fromKey then
@@ -6343,16 +7806,22 @@ function P.FinishDragImpl()
     notice = (srcAb.label or srcAb.name) .. (changed and " added to " or " already in ")
       .. (P.Visual.families[plus.famTag] or plus.famTag)
   elseif tab and tab.famTag then
-    if fromTag and sameBar and src then
+    local destAb = tab._ability
+    local destFilled = destAb and not (P.IsEmptyPrimary and P.IsEmptyPrimary(destAb)) and NormalizeAbility(destAb)
+    if not fromTag then
+      slotAlreadyPlaced = P.CommitCursorToTab and P.CommitCursorToTab(tab, true)
+      changed = slotAlreadyPlaced
+      accepted = true
+    elseif fromTag and sameBar and src and destFilled then
       local dest = {
         tag = tab.famTag,
         primary = true,
         key = tab._sbPrimaryKey,
-        ability = NormalizeAbility(tab._ability) or AbilitySnapshot(tab._ability),
+        ability = destFilled,
       }
       changed = SwapSlots(src, dest)
     else
-      changed, notice = DisplaceIntoFamily(tab.famTag, srcAb, tab._ability, {
+      changed, notice = DisplaceIntoFamily(tab.famTag, srcAb, destFilled, {
         primary = true, key = tab._sbPrimaryKey, tab = tab,
       })
       accepted = true
@@ -6363,18 +7832,34 @@ function P.FinishDragImpl()
     accepted = true
     notice = (srcAb.label or srcAb.name) .. (changed and " added to " or " already in ")
       .. (P.Visual.families[menu.famTag] or menu.famTag)
-  elseif fromTag and not menu and not onRail then
-    -- Shift-drag a drawer icon into empty space removes it.
-    changed = VacateSource(fromTag, fromKey, fromPrimary, srcAb)
+  elseif fromTag then
+    -- Shift-drag a face or extra off a plus / extra / tab: empty the parent
+    -- or remove the extra. Open drawers and the drop rail are not drop targets.
+    changed = VacateSource(fromTag, fromKey, fromPrimary, srcAb, true)
+    if changed then
+      if fromPrimary then
+        notice = (fromKey or fromTag) .. " emptied this form · drop a spell to fill"
+      else
+        notice = (srcAb.label or srcAb.name or "Ability") .. " removed"
+      end
+    end
   end
   HoldMenus(false)
-  if (changed or accepted) and not fromTag then ClearCursor() end
+  if changed and not slotAlreadyPlaced then
+    -- Place only the stance slot that changed. A full PlaceID pass picks up
+    -- each slot onto the cursor and writes caster page 1 while you are in cat.
+    -- CommitCursorToTab already PlaceAction'd the live abs slot.
+    local function applyBar(tag)
+      if tag and P.FamilyHasBars(tag) and P.PlaceFamilyPrimaryNow then
+        P.PlaceFamilyPrimaryNow(tag, P.CustomPrimaryFor(tag, PackFormNow()))
+      end
+    end
+    if tab and tab.famTag then applyBar(tab.famTag) end
+    if fromTag then applyBar(fromTag) end
+  end
+  if changed or accepted then pcall(ClearCursor) end
   if changed then
-    -- One explicit drop, one deferred apply. Never place actions while hovering.
-    -- Adding an ordinary click-only ability needs only our console rebuilt.
-    local consoleOnly = not fromTag and not NeedsBlizzardSlot(srcAb)
-      and not (tab and P.BarSlotOf(tab))
-      and not (extra and P.BarSlotOf(extra))
+    local consoleOnly = true
     P.dropRefreshQueued = true
     C_Timer.After(0, function()
       P.dropRefreshQueued = false
@@ -6430,12 +7915,15 @@ local function WireTabPickup(tab, tag)
   tab:HookScript("OnMouseDown", function(self, button)
     if self._sbEquipmentSlot then return end
     if InQuickKeybind() then return end
-    if button ~= "LeftButton" or not P.shiftHeld then return end
-    if drag.ability or (P.CursorKind() and P.CursorKind() ~= "secret") then return end
+    if button ~= "LeftButton" then return end
+    if P.CommitCursorToTab and P.CommitCursorToTab(self) then return end
+    if not P.shiftHeld then return end
+    if drag.ability then return end
+    if P.CursorHasPickup and P.CursorHasPickup() then return end
     for _, m in pairs(menus) do
       if m:IsShown() and m:IsMouseOver() then return end
     end
-    if self._ability then
+    if self._ability and not (P.IsEmptyPrimary and P.IsEmptyPrimary(self._ability)) then
       BeginInternalDrag(self._ability, self.famTag or tag, self._sbPrimaryKey, true)
     end
   end)
@@ -6461,8 +7949,10 @@ local function WireDropTargets(tab, menu, tag)
   tab.famTag = tag
   menu.famTag = tag
   WireTabPickup(tab, tag)
-  -- Also support click-to-pick-up, click-to-drop from the spellbook.
-  tab:SetScript("OnReceiveDrag", function() P.ReceiveDrop() end)
+  tab:SetScript("OnReceiveDrag", function(self)
+    if P.CommitCursorToTab and P.CommitCursorToTab(self, true) then return end
+    if P.ReceiveDrop then P.ReceiveDrop() end
+  end)
   menu:SetScript("OnReceiveDrag", function() P.ReceiveDrop() end)
 end
 
@@ -6477,7 +7967,12 @@ local function WireExtraDrag(b, tag)
   b:HookScript("OnMouseDown", function(self, button)
     if self._sbEquipmentSlot then return end
     if InQuickKeybind() then return end
-    if button ~= "LeftButton" or not P.shiftHeld then return end
+    if button ~= "LeftButton" then return end
+    if P.CursorHasPickup and P.CursorHasPickup() then
+      if P.ReceiveDrop then P.ReceiveDrop() end
+      return
+    end
+    if not P.shiftHeld then return end
     BeginInternalDrag(self._ability, self.famTag or tag, self._sbBindKey)
   end)
   b:SetScript("OnReceiveDrag", function() if P.ReceiveDrop then P.ReceiveDrop() end end)
@@ -6488,6 +7983,9 @@ function P.StartExternalDrag()
   if drag.active then return true end
   local ok, ability = pcall(CursorAbility)
   ability = ok and NormalizeAbility(ability) or nil
+  if not ability and P.CursorIsAssisted and P.CursorIsAssisted() then
+    ability = NormalizeAbility(P.AssistedAbility())
+  end
   if not ability then return false end
   drag.ability, drag.active, drag.fromTag, drag.fromPrimary, drag.bindKey = ability, true, nil, false, nil
   drag.sawDown = IsMouseButtonDown("LeftButton") and true or false
@@ -6529,8 +8027,12 @@ function P.UpdateDropPreview()
     else
       message = name .. "  >  " .. family .. "  /  Place here; current ability moves to the family"
     end
-  elseif drag.fromTag and not MenuUnderMouse() and not rail:IsMouseOver() then
-    message = name .. "  /  Release outside to remove or reset this slot. Esc cancels."
+  elseif drag.fromTag and not MenuUnderMouse() then
+    if drag.fromPrimary then
+      message = name .. "  /  Release off the bar to empty this slot. Esc cancels."
+    else
+      message = name .. "  /  Release off the bar to remove this extra. Esc cancels."
+    end
   else
     message = name .. "  /  Choose a + to add. Esc cancels."
   end
@@ -6661,6 +8163,11 @@ local function SetMenuButton(b, r, bindNow)
   if r.equipmentSlot then b.itemID = r.tooltipItemID end
   P.ArmModifiedCast(b)
   P.ArmCancelForm(b, r)
+  pcall(function()
+    b:SetAttribute("shift-type1", "")
+    b:SetAttribute("shift-type*", "")
+    b:SetAttribute("shift-typerelease1", "")
+  end)
   if r.bindId then
     SetupClickButton(r.bindId, r)
     WireQuickKeybind(b, P.HardwareCommand(r.bindKey, r.blizzardSlot, r.commandName or ClickCommand(r.bindId)), r.bindId, r.bindKey)
@@ -6951,6 +8458,497 @@ function P.RotationSet()
   return set
 end
 
+function P.PrintNameList(title, names)
+  names = names or {}
+  table.sort(names)
+  if #names == 0 then
+    print("|cff0070dd" .. title .. ":|r (none)")
+    return
+  end
+  local acc, n = {}, 0
+  local function flush()
+    if n == 0 then return end
+    print("|cff0070dd" .. title .. ":|r " .. table.concat(acc, ", "))
+    acc, n = {}, 0
+  end
+  for i = 1, #names do
+    local name = names[i]
+    local add = (n > 0 and 2 or 0) + #name
+    if n > 0 and n + add > 180 then flush() end
+    acc[#acc + 1] = name
+    n = n + add
+  end
+  flush()
+end
+
+function P.ProbeSpellLabel(id)
+  if id == nil then return nil end
+  if issecretvalue and issecretvalue(id) then return "(secret)" end
+  local pub = P.PublicNumber(id) or P.ID(id)
+  if not pub then return "(secret)" end
+  local name
+  pcall(function() name = SpellName(pub) end)
+  name = P.Text(name)
+  if name and name ~= tostring(pub) then return name end
+  return "#" .. tostring(pub)
+end
+
+function P.EnsureProbeFrame()
+  if P.probeFrame then return P.probeFrame end
+  local f = CreateFrame("Frame", "SuperBindsProbeFrame", UIParent, "BackdropTemplate")
+  f:SetSize(600, 560)
+  f:SetPoint("CENTER")
+  f:SetFrameStrata("DIALOG")
+  f:SetFrameLevel(200)
+  f:SetMovable(true)
+  f:SetClampedToScreen(true)
+  f:EnableMouse(true)
+  f:RegisterForDrag("LeftButton")
+  f:SetScript("OnDragStart", f.StartMoving)
+  f:SetScript("OnDragStop", f.StopMovingOrSizing)
+  if P.VisualPanel then P.VisualPanel(f, P.Visual.ink, P.Visual.brass) end
+  if AttachDropShadow then AttachDropShadow(f) end
+  if P.VisualLine then P.VisualLine(f, P.Visual.teal, 1, -1) end
+  local title = f:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+  title:SetPoint("TOPLEFT", 18, -16)
+  title:SetText("Copy dump")
+  if P.VisualFont then P.VisualFont(title, 18, P.Visual.text) end
+  f.TitleText = title
+  local hint = f:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+  hint:SetPoint("TOPLEFT", 18, -38)
+  hint:SetText("Ctrl+A, Ctrl+C  ·  or /reload so the log can be read from SavedVariables")
+  if P.VisualFont then P.VisualFont(hint, 10, P.Visual.muted) end
+  local close = CreateFrame("Button", nil, f, "UIPanelCloseButton")
+  close:SetPoint("TOPRIGHT", -6, -6)
+  close:SetScript("OnClick", function() f:Hide() end)
+  local scroll = CreateFrame("ScrollFrame", "SuperBindsProbeScroll", f, "UIPanelScrollFrameTemplate")
+  scroll:SetPoint("TOPLEFT", 16, -56)
+  scroll:SetPoint("BOTTOMRIGHT", -36, 16)
+  local edit = CreateFrame("EditBox", "SuperBindsProbeEdit", scroll)
+  edit:SetMultiLine(true)
+  edit:SetAutoFocus(false)
+  edit:SetFontObject(GameFontHighlightSmall)
+  edit:SetWidth(530)
+  if edit.SetMaxLetters then pcall(edit.SetMaxLetters, edit, 0) end
+  edit:SetScript("OnEscapePressed", function(self) self:ClearFocus(); f:Hide() end)
+  scroll:SetScrollChild(edit)
+  f.edit = edit
+  tinsert(UISpecialFrames, "SuperBindsProbeFrame")
+  P.probeFrame = f
+  return f
+end
+
+function P.ShowProbeText(text, title)
+  local f = P.EnsureProbeFrame()
+  if not f or not f.edit then return end
+  if f.TitleText and P.Text(title) then f.TitleText:SetText(title) end
+  f.edit:SetText(text or "")
+  f:Show()
+  f.edit:SetFocus()
+  if f.edit.HighlightText then f.edit:HighlightText() end
+end
+
+function P.ProbeDumpText(dump)
+  dump = dump or {}
+  local lines = {
+    "Super Binds probe",
+    "at=" .. tostring(dump.at or ""),
+    "race=" .. tostring(dump.race or "?")
+      .. "  class=" .. tostring(dump.class or "?")
+      .. "  spec=" .. tostring(dump.spec or "?") .. " " .. tostring(dump.specName or "")
+      .. "  hero=" .. tostring(dump.hero or "none")
+      .. "  pack=" .. tostring(dump.pack or "none"),
+    "SBA button: " .. tostring(dump.sbaButton or "?"),
+  }
+  if (dump.sbaSecret or 0) > 0 then
+    lines[#lines + 1] = "SBA secret ids: " .. tostring(dump.sbaSecret) .. " (leave combat and probe again)"
+  end
+  local function addList(title, names)
+    names = names or {}
+    if #names == 0 then
+      lines[#lines + 1] = title .. ": (none)"
+      return
+    end
+    lines[#lines + 1] = title .. ": " .. table.concat(names, ", ")
+  end
+  addList("SBA presses", dump.sba)
+  for i = 1, #(dump.lines or {}) do
+    local row = dump.lines[i]
+    if type(row) == "table" then
+      addList((row.name or "line") .. " · active", row.active)
+      addList((row.name or "line") .. " · passive", row.passive)
+    end
+  end
+  addList("Shapeshifts", dump.shapeshifts)
+  return table.concat(lines, "\n")
+end
+
+function P.DumpAbilityLabel(spec)
+  if type(spec) ~= "table" then return "?" end
+  if spec.empty or (P.IsEmptyPrimary and P.IsEmptyPrimary(spec)) then return "(empty)" end
+  if spec.sba then return "Assisted Rotation" end
+  if type(spec.spell) == "table" then
+    local name = Known(unpack(spec.spell))
+    if name then return name end
+  end
+  return P.Text(spec.label) or P.Text(spec.name) or (spec.macro and tostring(spec.macro[1])) or "?"
+end
+
+function P.DumpNativeLabel(abs)
+  abs = P.ID(abs)
+  if not abs then return "(none)" end
+  local ab = P.NativeAbility and P.NativeAbility(abs)
+  if ab then return P.Text(ab.label) or P.Text(ab.name) or "?" end
+  local kind = P.Read(GetActionInfo, abs)
+  if not kind then return "(empty)" end
+  return tostring(kind)
+end
+
+function P.DumpBindingKeys(command)
+  if not P.Text(command) or type(GetBindingKey) ~= "function" then return "" end
+  local a, b, c, d = P.Read(GetBindingKey, command)
+  local parts = {}
+  if P.Text(a) then parts[#parts + 1] = a end
+  if P.Text(b) then parts[#parts + 1] = b end
+  if P.Text(c) then parts[#parts + 1] = c end
+  if P.Text(d) then parts[#parts + 1] = d end
+  return table.concat(parts, ", ")
+end
+
+function P.CollectLayoutDump()
+  local pack = P.CurrentPack and P.CurrentPack()
+  local form = (P.PackFormNow and P.PackFormNow()) or (P.CurrentForm and P.CurrentForm())
+  local bonus
+  pcall(function() bonus = GetBonusBarOffset() end)
+  local stamp
+  pcall(function() stamp = date("%Y-%m-%d %H:%M:%S") end)
+  local layout = {
+    at = stamp or "",
+    pack = (pack and pack.name) or "none",
+    form = form or "?",
+    bonus = bonus,
+    console = {},
+    liveBar = {},
+    liveConsole = {},
+    chords = {},
+    overlays = {},
+    wheelActionButton = P._wheelActionButtonRejected and "rejected" or nil,
+  }
+  if type(pack) == "table" then
+    for _, fam in ipairs(pack.families or {}) do
+      local row = {
+        tag = fam.tag, caption = fam.caption, title = fam.title,
+        slot = nil, key = nil, faces = {}, extras = {}, overlay = {},
+      }
+      if type(fam.bars) == "table" then
+        for formName, spec in pairs(fam.bars) do
+          if type(spec) == "table" then
+            row.faces[formName] = P.DumpAbilityLabel(spec)
+            row.slot = row.slot or spec.slot
+            row.key = row.key or spec.bindKey or spec.key
+          end
+        end
+      elseif type(fam.bar) == "table" then
+        row.faces.all = P.DumpAbilityLabel(fam.bar)
+        row.slot = fam.bar.slot
+        row.key = fam.bar.bindKey or fam.bar.key
+      end
+      for _, it in ipairs(fam.items or {}) do
+        row.extras[#row.extras + 1] = {
+          key = it.bindKey or it.key,
+          label = P.DumpAbilityLabel(it),
+          slot = it.slot,
+          click = not (it.bindKey or it.key) or nil,
+        }
+      end
+      if fam.tag and P.CustomPrimaryFor then
+        local forms = {"caster", "cat", "bear", "moonkin", "travel"}
+        for i = 1, #forms do
+          local ov = P.CustomPrimaryFor(fam.tag, forms[i])
+          if ov then
+            row.overlay[forms[i]] = P.DumpAbilityLabel(ov)
+          end
+        end
+      end
+      layout.console[#layout.console + 1] = row
+    end
+  end
+  local n = (P.BarButtons and P.BarButtons()) or 12
+  for rel = 1, n do
+    local abs = (P.LiveActionSlot and P.LiveActionSlot(rel)) or (P.ActionSlot and P.ActionSlot(rel, form)) or rel
+    local cmd = "ACTIONBUTTON" .. rel
+    layout.liveBar[#layout.liveBar + 1] = {
+      rel = rel, abs = abs, cmd = cmd,
+      key = P.DumpBindingKeys(cmd),
+      label = P.DumpNativeLabel(abs),
+    }
+  end
+  if type(consoleTabs) == "table" then
+    local live = P.LiveKeymapDisplay and P.LiveKeymapDisplay()
+    if type(live) == "table" then
+      for i = 1, #live do
+        local g = live[i]
+        local entries = {}
+        for j = 1, #(g.entries or {}) do
+          local e = g.entries[j]
+          entries[#entries + 1] = { key = e.key, label = e.label }
+        end
+        layout.liveConsole[#layout.liveConsole + 1] = { title = g.title, entries = entries }
+      end
+    end
+  end
+  local want = {}
+  local function claim(key)
+    key = P.Text(key)
+    if key then want[key] = true end
+  end
+  if pack then
+    for key in pairs(pack.barBinds or {}) do claim(key) end
+    for key in pairs(pack.hardware or {}) do claim(key) end
+    for key in pairs(pack.camera or {}) do claim(key) end
+    for _, fam in ipairs(pack.families or {}) do
+      if fam.bar then claim(fam.bar.bindKey or fam.bar.key) end
+      if type(fam.bars) == "table" then
+        for _, spec in pairs(fam.bars) do claim(spec.bindKey or spec.key) end
+      end
+      for _, it in ipairs(fam.items or {}) do claim(it.bindKey or it.key) end
+    end
+  end
+  for rel = 1, n do
+    local a, b, c, d = P.Read(GetBindingKey, "ACTIONBUTTON" .. rel)
+    claim(a); claim(b); claim(c); claim(d)
+  end
+  for bindId, key in pairs((SuperBindsDB and SuperBindsDB.binds) or {}) do
+    if type(bindId) == "string" and bindId:find("^key:", 1, true) then claim(key) end
+  end
+  local keys = {}
+  for key in pairs(want) do keys[#keys + 1] = key end
+  table.sort(keys)
+  for i = 1, #keys do
+    local key = keys[i]
+    local cmd = P.Read(GetBindingAction, key) or ""
+    layout.chords[#layout.chords + 1] = { key = key, command = cmd }
+  end
+  for tag, custom in pairs((SuperBindsDB and SuperBindsDB.custom) or {}) do
+    local fp = custom and custom.formPrimary
+    if type(fp) == "table" then
+      for formName, ab in pairs(fp) do
+        layout.overlays[#layout.overlays + 1] = {
+          tag = tag, form = formName, label = P.DumpAbilityLabel(ab),
+        }
+      end
+    end
+  end
+  table.sort(layout.overlays, function(a, b)
+    if a.tag == b.tag then return tostring(a.form) < tostring(b.form) end
+    return tostring(a.tag) < tostring(b.tag)
+  end)
+  return layout
+end
+
+function P.LayoutDumpText(layout)
+  layout = layout or {}
+  local lines = {
+    "Keys",
+    "at=" .. tostring(layout.at or ""),
+    "pack=" .. tostring(layout.pack or "none") .. "  form=" .. tostring(layout.form or "?")
+      .. "  bonus=" .. tostring(layout.bonus or "?"),
+  }
+  local formOrder = {"caster", "cat", "bear", "moonkin", "travel", "all"}
+  lines[#lines + 1] = "Console (pack stock)"
+  for i = 1, #(layout.console or {}) do
+    local row = layout.console[i]
+    local head = "  " .. tostring(row.tag or "?")
+    if row.caption then head = head .. " " .. row.caption end
+    if row.slot then head = head .. "  slot=" .. tostring(row.slot) end
+    if row.key then head = head .. "  key=" .. tostring(row.key) end
+    lines[#lines + 1] = head
+    local faces = {}
+    local seen = {}
+    for fi = 1, #formOrder do
+      local f = formOrder[fi]
+      if row.faces and row.faces[f] then
+        seen[f] = true
+        faces[#faces + 1] = f .. "=" .. row.faces[f]
+      end
+    end
+    if type(row.faces) == "table" then
+      for f, v in pairs(row.faces) do
+        if not seen[f] then faces[#faces + 1] = f .. "=" .. tostring(v) end
+      end
+    end
+    if #faces > 0 then lines[#lines + 1] = "    faces: " .. table.concat(faces, "  ") end
+    if type(row.overlay) == "table" then
+      local ovs = {}
+      for fi = 1, #formOrder do
+        local f = formOrder[fi]
+        if row.overlay[f] then ovs[#ovs + 1] = f .. "=" .. row.overlay[f] end
+      end
+      if #ovs > 0 then lines[#lines + 1] = "    overlay: " .. table.concat(ovs, "  ") end
+    end
+    for j = 1, #(row.extras or {}) do
+      local ex = row.extras[j]
+      local bit = ex.click and "click" or tostring(ex.key or "")
+      if ex.slot then bit = bit .. " slot=" .. tostring(ex.slot) end
+      lines[#lines + 1] = "    extra: " .. bit .. "  " .. tostring(ex.label or "?")
+    end
+  end
+  lines[#lines + 1] = "Live ACTIONBUTTON (" .. tostring(layout.form or "?") .. ")"
+  for i = 1, #(layout.liveBar or {}) do
+    local s = layout.liveBar[i]
+    local key = P.Text(s.key) or "(unbound)"
+    lines[#lines + 1] = "  " .. tostring(s.rel) .. "  " .. key
+      .. "  abs=" .. tostring(s.abs) .. "  " .. tostring(s.label or "?")
+  end
+  if #(layout.liveConsole or {}) > 0 then
+    lines[#lines + 1] = "Live console (painted)"
+    for i = 1, #layout.liveConsole do
+      local g = layout.liveConsole[i]
+      lines[#lines + 1] = "  " .. tostring(g.title or "?")
+      for j = 1, #(g.entries or {}) do
+        local e = g.entries[j]
+        local k = P.Text(e.key) or "click"
+        lines[#lines + 1] = "    " .. k .. "  " .. tostring(e.label or "?")
+      end
+    end
+  end
+  lines[#lines + 1] = "Chords (GetBindingAction)"
+  if #(layout.chords or {}) == 0 then
+    lines[#lines + 1] = "  (none)"
+  else
+    for i = 1, #layout.chords do
+      local c = layout.chords[i]
+      lines[#lines + 1] = "  " .. tostring(c.key) .. " = " .. (P.Text(c.command) or "(empty)")
+    end
+  end
+  lines[#lines + 1] = "Overlays (formPrimary)"
+  if #(layout.overlays or {}) == 0 then
+    lines[#lines + 1] = "  (none)"
+  else
+    for i = 1, #layout.overlays do
+      local o = layout.overlays[i]
+      lines[#lines + 1] = "  " .. tostring(o.tag) .. " " .. tostring(o.form) .. " = " .. tostring(o.label)
+    end
+  end
+  if layout.wheelActionButton == "rejected" then
+    lines[#lines + 1] = "Wheel: ACTIONBUTTON rejected by client; bound slot contents (MACRO/SPELL)"
+  end
+  return table.concat(lines, "\n")
+end
+
+function P.CollectProbeDump()
+  P.EnsureDB()
+  pcall(ScanBook)
+  local function sortedCopy(list)
+    local out = {}
+    for i = 1, #(list or {}) do out[i] = list[i] end
+    table.sort(out)
+    return out
+  end
+  local race = P.Text(UnitRace and UnitRace("player"))
+  local classLoc, classToken
+  pcall(function() classLoc, classToken = UnitClass("player") end)
+  local specID = P.PlayerSpecID and P.PlayerSpecID()
+  local specName = P.PlayerSpecName and P.PlayerSpecName()
+  local heroID = P.PlayerHeroTalentID and P.PlayerHeroTalentID()
+  local pack = P.CurrentPack and P.CurrentPack()
+  local sbaNames, sbaSecret = {}, 0
+  pcall(function()
+    if not (C_AssistedCombat and C_AssistedCombat.GetRotationSpells) then return end
+    for _, id in pairs(C_AssistedCombat.GetRotationSpells()) do
+      local label = P.ProbeSpellLabel(id)
+      if label == "(secret)" then
+        sbaSecret = sbaSecret + 1
+      elseif label then
+        sbaNames[#sbaNames + 1] = label
+      end
+    end
+  end)
+  local byLine, lineOrder = {}, {}
+  pcall(function()
+    local bank = Enum and Enum.SpellBookSpellBank and Enum.SpellBookSpellBank.Player
+    local types = Enum and Enum.SpellBookItemType
+    for line = 1, C_SpellBook.GetNumSpellBookSkillLines() do
+      local li = C_SpellBook.GetSpellBookSkillLineInfo(line)
+      if li and not li.offSpecID then
+        local lineName = P.Text(li.name) or ("line " .. line)
+        if not byLine[lineName] then
+          byLine[lineName] = { active = {}, passive = {} }
+          lineOrder[#lineOrder + 1] = lineName
+        end
+        local bucket = byLine[lineName]
+        for j = (li.itemIndexOffset or 0) + 1, (li.itemIndexOffset or 0) + (li.numSpellBookItems or 0) do
+          local it = P.BookInfo(j, bank)
+          if it and not it.isOffSpec then
+            local kind = it.itemType
+            if not (types and kind == types.FutureSpell) then
+              local name = P.Text(it.name) or P.ProbeSpellLabel(it.spellID)
+              if name and name ~= "(secret)" then
+                if types and (kind == types.AssistedCombat or P.IsAssistedToken(kind) or P.IsAssistedToken(name)) then
+                  name = name .. " [SBA]"
+                elseif types and kind == types.Flyout then
+                  name = name .. " [flyout]"
+                end
+                if it.isPassive then
+                  bucket.passive[#bucket.passive + 1] = name
+                else
+                  bucket.active[#bucket.active + 1] = name
+                end
+              end
+            end
+          end
+        end
+      end
+    end
+  end)
+  local forms = {}
+  pcall(function()
+    local n = GetNumShapeshiftForms and GetNumShapeshiftForms() or 0
+    for i = 1, n do
+      local _, _, _, spellID = GetShapeshiftFormInfo(i)
+      local label = P.ProbeSpellLabel(spellID)
+      if label then forms[#forms + 1] = label end
+    end
+  end)
+  local lines = {}
+  for i = 1, #lineOrder do
+    local name = lineOrder[i]
+    local bucket = byLine[name]
+    lines[#lines + 1] = {
+      name = name,
+      active = sortedCopy(bucket.active),
+      passive = sortedCopy(bucket.passive),
+    }
+  end
+  local stamp
+  pcall(function() stamp = date("%Y-%m-%d %H:%M:%S") end)
+  local dump = {
+    at = stamp or "",
+    race = race or "?",
+    class = P.Text(classToken) or P.Text(classLoc) or "?",
+    spec = specID or 0,
+    specName = specName or "",
+    hero = heroID or 0,
+    pack = (pack and pack.name) or "none",
+    sbaButton = P.ProbeSpellLabel(P.AssistedActionID and P.AssistedActionID()) or "Assisted Rotation",
+    sba = sortedCopy(sbaNames),
+    sbaSecret = sbaSecret,
+    lines = lines,
+    shapeshifts = sortedCopy(forms),
+  }
+  SuperBindsDB.probe = dump
+  return dump
+end
+
+function P.PrintProbe()
+  local dump = P.CollectProbeDump()
+  local layout = P.CollectLayoutDump()
+  SuperBindsDB.dump = layout
+  local text = P.ProbeDumpText(dump) .. "\n\n" .. P.LayoutDumpText(layout)
+  P.ShowProbeText(text, "Spell + keys")
+  print("|cff0070ddSuper Binds:|r dump saved. Copy the window (Ctrl+A, Ctrl+C), or |cffffffff/reload|r so it can be read from SavedVariables.")
+end
+
 function P.PrintSBA()
   local pack = P.CurrentPack and P.CurrentPack()
   if pack and pack.useBlizzardSBA == false then return end
@@ -7033,7 +9031,17 @@ end
 
 function P.SyncSpecialBarState()
   if not P.barDriver then return end
-  pcall(RegisterStateDriver, P.barDriver, "special", SpecialBarState())
+  if Locked() then
+    P._pendingSpecialBar = true
+    return
+  end
+  local cond = SpecialBarState()
+  if P._specialBarCond == cond then return end
+  local ok = pcall(RegisterStateDriver, P.barDriver, "special", cond)
+  if ok then
+    P._specialBarCond = cond
+    P._pendingSpecialBar = nil
+  end
 end
 local SPECIAL_BAR_STATE = "[overridebar]1;[vehicleui]1;[possessbar]1;[mounted]1;0"
 
@@ -7081,18 +9089,24 @@ function P.EnsureBarDriver()
   d:Hide()
   d:SetAttribute("_onstate-special", [[
     self:ClearBindings()
-    local yield = self:GetAttribute("useMount") == "1"
-    if newstate ~= "1" or not yield then
-      local n = self:GetAttribute("n") or 0
-      for i = 1, n do
-        local key = self:GetAttribute("k"..i)
-        local cmd = self:GetAttribute("c"..i)
-        if key and cmd then self:SetBinding(true, key, cmd) end
+    local n = tonumber(self:GetAttribute("n")) or 0
+    for i = 1, n do
+      local key = self:GetAttribute("k"..i)
+      local cmd = self:GetAttribute("c"..i)
+      if key and cmd then self:SetBinding(true, key, cmd) end
+    end
+    if newstate == "1" and self:GetAttribute("useMount") == "1" then
+      local sn = tonumber(self:GetAttribute("sn")) or 0
+      for i = 1, sn do
+        local key = self:GetAttribute("sk"..i)
+        local spell = self:GetAttribute("ss"..i)
+        if key and spell then self:SetBindingSpell(true, key, spell) end
       end
     end
   ]])
   P.SyncMountBarDriver()
-  pcall(RegisterStateDriver, d, "special", SpecialBarState())
+  P._specialBarCond = nil
+  P.SyncSpecialBarState()
   if P.EnsureModDriver then P.EnsureModDriver() end
   d:HookScript("OnAttributeChanged", function(_, attr)
     if attr ~= "state-special" then return end
@@ -7167,29 +9181,72 @@ function P.FlushOverrides()
     d:SetAttribute("c" .. i, nil)
   end
   d:SetAttribute("n", n)
-  if P.UseMountBar() then return end
   for _, pair in ipairs(P.overrideList) do
     pcall(SetOverrideBinding, d, true, pair[1], pair[2])
   end
+  if P.ApplySkyridingKeybinds then P.ApplySkyridingKeybinds(d) end
   P.BindThunderstormShiftE()
 end
 
 -- Console is ours. Blizzard's mount/vehicle bar can stay. Default: hide the
--- console while mounted; /superbinds console toggles it.
+-- console while mounted; /superbinds console toggles it. The world map is
+-- HIGH/DIALOG; our bar is HIGH and used to sit on top of M.
+function P.HUDMapOpen()
+  local function shown(name)
+    local f = _G[name]
+    return f and f.IsShown and f:IsShown() and true or false
+  end
+  return shown("WorldMapFrame") or shown("FlightMapFrame")
+end
+
+function P.WatchHUDMap()
+  local function hook(f)
+    if not f or f._sbMapHook then return end
+    f._sbMapHook = true
+    f:HookScript("OnShow", function()
+      if P.ApplyConsoleMountedHide then P.ApplyConsoleMountedHide() end
+    end)
+    f:HookScript("OnHide", function()
+      if P.ApplyConsoleMountedHide then P.ApplyConsoleMountedHide() end
+    end)
+  end
+  hook(_G.WorldMapFrame)
+  hook(_G.FlightMapFrame)
+end
+
+function P.ConsoleVisibilityDriver()
+  if P.HUDMapOpen() then return "hide" end
+  -- Shapeshift packs keep the console in flight form. Forms keys still work.
+  local hideMount = SuperBindsDB.hideConsoleMounted
+  if P.CollectFormBinds then
+    if next(P.CollectFormBinds()) then hideMount = false end
+  end
+  if hideMount then
+    return "[petbattle]hide;[mounted]hide;[vehicleui]hide;[overridebar]hide;show"
+  end
+  return "[petbattle]hide;show"
+end
+
 function P.ApplyConsoleMountedHide()
   local c = console
   if not c then return end
+  P.WatchHUDMap()
+  local mapOpen = P.HUDMapOpen()
+  if mapOpen then
+    c:SetFrameStrata("BACKGROUND")
+    if P.dropRail then P.dropRail:Hide() end
+  else
+    c:SetFrameStrata("HIGH")
+    c:SetFrameLevel(50)
+  end
   if Locked() then
     P.pendingConsoleVis = true
+    if P.ApplyPressPulseShown then P.ApplyPressPulseShown() end
     return
   end
   P.pendingConsoleVis = nil
-  if SuperBindsDB.hideConsoleMounted then
-    pcall(RegisterStateDriver, c, "visibility", "[mounted]hide;[vehicleui]hide;[overridebar]hide;show")
-  else
-    pcall(UnregisterStateDriver, c, "visibility")
-    c:Show()
-  end
+  pcall(RegisterStateDriver, c, "visibility", P.ConsoleVisibilityDriver())
+  if P.ApplyPressPulseShown then P.ApplyPressPulseShown() end
 end
 
 -- hideBar1 fades MainActionBar. Extra / zone buttons must stay visible
@@ -7383,20 +9440,60 @@ function P.SyncNativeSBAHosts()
 end
 
 function P.DimMainButtons(show)
-  local a = show and 1 or 0
-  local hosted = P._hostedByRel or {}
-  for i = 1, 12 do
-    local b = _G["ActionButton" .. i]
-    if b then
-      pcall(function()
-        if hosted[i] then
-          if b.SetIgnoreParentAlpha then b:SetIgnoreParentAlpha(true) end
-          b:SetAlpha(1)
-        else
-          if b.SetIgnoreParentAlpha then b:SetIgnoreParentAlpha(false) end
-          b:SetAlpha(a)
-        end
-      end)
+  -- Native action buttons are Blizzard's secure controls. Do not change their
+  -- alpha or mouse state. Fade the MainActionBar parent instead.
+end
+
+function P.NativeSlotIsAssisted(frame)
+  if not frame then return false end
+  local abs = frame.GetAttribute and P.ID(frame:GetAttribute("action"))
+  if not abs then
+    local rel = P.BarSlotOf(frame)
+    abs = rel and ((P.LiveActionSlot and P.LiveActionSlot(rel)) or P.ActionSlot(rel, PackFormNow()))
+  end
+  if not abs then return false end
+  if P.ActionIsAssisted and P.ActionIsAssisted(abs) then return true end
+  local kind, id, sub = P.Read(GetActionInfo, abs)
+  if P.IsAssistedToken(kind) or P.IsAssistedToken(id) or P.IsAssistedToken(sub) then return true end
+  if kind ~= "spell" then return false end
+  id = P.ID(id)
+  if id then return P.IsAssistedAbility(id) end
+  -- Combat may hide the action ID. The marker is set only from a prior native
+  -- slot read or a successful native SBA placement.
+  return frame._sbNativeSBA == true
+end
+
+-- Read the action currently occupying a native slot. This is presentation
+-- data only: the slot remains the authority for what the key and tab execute.
+function P.NativeAbility(abs)
+  abs = P.ID(abs)
+  if not abs then return nil end
+  if P.ActionIsAssisted and P.ActionIsAssisted(abs) then
+    return P.AssistedAbility()
+  end
+  local kind, id, sub = P.Read(GetActionInfo, abs)
+  if P.IsAssistedToken(kind) or P.IsAssistedToken(id) or P.IsAssistedToken(sub) then
+    return P.AssistedAbility()
+  end
+  if kind == "spell" then
+    id = P.ID(id)
+    if not id then return nil end
+    local info = P.Read(C_Spell and C_Spell.GetSpellInfo, id)
+    if type(info) == "table" and P.Text(info.name) then
+      return {name=info.name, label=info.name, id=id,
+        icon=P.Public(info.iconID) or SpellIcon(id, info.name)}
+    end
+  elseif kind == "macro" then
+    local name = P.Text(GetMacroInfo and GetMacroInfo(id))
+    if name then
+      return {name=name, label=name, macroIndex=id,
+        icon=P.Public(select(2, GetMacroInfo(id))) or 134400}
+    end
+  elseif kind == "item" then
+    local itemID = P.ID(id)
+    if itemID then
+      return {name="Item "..itemID, label="Item "..itemID, itemID=itemID,
+        icon=(C_Item and C_Item.GetItemIconByID and C_Item.GetItemIconByID(itemID)) or 134400}
     end
   end
 end
@@ -7404,16 +9501,16 @@ end
 function P.ApplyBar1Chrome()
   P.ApplyConsoleMountedHide()
   if P.UseMountBar() then
-    P.DimActionBar(_G.MainActionBar, true)
-    P.DimActionBar(_G.MainMenuBar, true)
-    P.DimActionBar(_G.OverrideActionBar, true)
-    P.DimMainButtons(true)
+    P.DimActionBar(_G.MainActionBar, false)
+    P.DimActionBar(_G.OverrideActionBar, false)
+    P.DimActionBar(_G.MainMenuBar, false)
+    P.DimMainButtons(false)
     P.KeepUtilityButtonsVisible()
+    if not Locked() then P.HideAllMultiBars() end
     return
   end
   local show = not SuperBindsDB.hideBar1
   P.DimActionBar(_G.MainActionBar, show)
-  P.DimActionBar(_G.MainMenuBar, show)
   P.DimMainButtons(show)
   P.KeepUtilityButtonsVisible()
   if not P._sbExtrasHidden and not Locked() then
@@ -7506,6 +9603,8 @@ function P.HardwareCommand(key, slot, fallback)
 end
 
 function P.HotkeyCommand(tab, slot, key)
+  local formCmd = P.FormBindCommand and P.FormBindCommand(key)
+  if formCmd then return formCmd end
   if P.ID(slot) and slot >= 1 and slot <= 12 then
     return "ACTIONBUTTON" .. slot
   end
@@ -7529,16 +9628,13 @@ function P.BindActionSlot(frame)
     local abs = P.ID(frame:GetAttribute("action"))
     if abs and abs > P.BarButtons() then return abs end
     if abs then
-      local form = P.CurrentForm and P.CurrentForm()
-      if form and P.BarOwner then form = P.BarOwner(form) or form end
-      return (P.ActionSlot and P.ActionSlot(((abs - 1) % P.BarButtons()) + 1, form)) or abs
+      local rel = ((abs - 1) % P.BarButtons()) + 1
+      return (P.LiveActionSlot and P.LiveActionSlot(rel)) or abs
     end
   end
   local rel = P.BarSlotOf(frame)
   if not P.ID(rel) then return nil end
-  local form = P.CurrentForm and P.CurrentForm()
-  if form and P.BarOwner then form = P.BarOwner(form) or form end
-  return (P.ActionSlot and P.ActionSlot(rel, form)) or rel
+  return (P.LiveActionSlot and P.LiveActionSlot(rel)) or rel
 end
 
 -- Mouse buttons ignore CLICK commands. Override spell/macro binds on the
@@ -7614,7 +9710,6 @@ function P.BindMouseHardware()
   if not (P.CurrentPack and P.CurrentPack()) then
     pcall(SetBinding, "CTRL-Q")
   end
-  -- Old T-family MMB chords and the rejected MWHEEL* names.
   P.RestoreCameraWheel()
   for _, key in ipairs({"CTRL-BUTTON4", "CTRL-BUTTON5"}) do
     if not P.IsCameraBinding(key) then
@@ -7632,6 +9727,7 @@ function P.BindMouseHardware()
   pcall(SetBinding, "SHIFT-MWHEELDOWN")
   pcall(SetBinding, "CTRL-MWHEELUP")
   pcall(SetBinding, "CTRL-MWHEELDOWN")
+  P._wheelActionButtonRejected = nil
   local claimed = {}
   local binds = SuperBindsDB.binds or {}
   for id, key in pairs(binds) do
@@ -7639,21 +9735,32 @@ function P.BindMouseHardware()
       claimed[key] = id
     end
   end
+  local function bindKey(key, cmd, spec)
+    if not P.Text(cmd) then return false end
+    local ok, accepted = pcall(SetBinding, key, cmd)
+    if ok and accepted then return true end
+    -- Retail wheel often rejects ACTIONBUTTON. Bind the live slot's macro/spell
+    -- so Shift-wheel-up matches click-THORN, not a named racial.
+    if spec and P.ID(spec.slot) then
+      local fallback = P.SlotContentCommand and P.SlotContentCommand(spec.slot)
+      if P.Text(fallback) and fallback ~= cmd then
+        ok, accepted = pcall(SetBinding, key, fallback)
+        if ok and accepted then
+          if type(key) == "string" and key:find("MOUSEWHEEL", 1, true) then
+            P._wheelActionButtonRejected = true
+          end
+          return true
+        end
+      end
+    end
+    return false
+  end
   for key, spec in pairs(MOUSE_HARDWARE) do
-    if not claimed[key] and not P.IsAddonCameraKey(key) then
+    if not P.IsAddonCameraKey(key) then
       pcall(SetBinding, key)
       local cmd = P.MouseKeyCommand(key)
       if not cmd and P.ID(spec.slot) then cmd = "ACTIONBUTTON" .. spec.slot end
-      if cmd then
-        local ok, accepted = pcall(SetBinding, key, cmd)
-        if (not ok or accepted == false) and spec.spell then
-          cmd = P.SpellBindCommand(spec.spell)
-          if cmd then pcall(SetBinding, key, cmd) end
-        elseif (not ok or accepted == false) and P.ID(spec.slot) then
-          cmd = P.ActionBindCommand(spec.slot)
-          if cmd then pcall(SetBinding, key, cmd) end
-        end
-      end
+      bindKey(key, cmd, spec)
     end
   end
   for _, frame in ipairs(P.BindFrames()) do
@@ -7662,22 +9769,33 @@ function P.BindMouseHardware()
       and not P.IsCameraBinding(key)
       and not P.IsAddonCameraKey(key) then
       local cmd = P.FireableMouseCommand(frame, key)
-      if cmd then pcall(SetBinding, key, cmd) end
+      local spec = MOUSE_HARDWARE[key]
+      pcall(SetBinding, key)
+      bindKey(key, cmd, spec)
     end
   end
   P.RebuildOverrideList()
   P.FlushOverrides()
 end
 
+-- Keyboard pack faces (R = ACTIONBUTTON9). Call after mouse hardware so a
+-- leftover wipe cannot leave R empty.
+function P.BindPackBarKeys()
+  if Locked() then return end
+  for key, cmd in pairs(BAR_BINDS) do
+    if P.Text(key) and type(cmd) == "string" and cmd:find("^ACTIONBUTTON")
+      and not P.IsMouseKey(key) then
+      local have = GetBindingAction(key)
+      if not P.Text(have) then
+        pcall(SetBinding, key, cmd)
+      end
+    end
+  end
+end
+
 function P.ReclaimMouseOverrides()
   if Locked() or not SuperBindsDB.applied then return end
   P.EnsureBarDriver()
-  if P.UseMountBar() then
-    pcall(ClearOverrideBindings, P.barDriver)
-    if console then pcall(ClearOverrideBindings, console) end
-    P.ApplyBar1Chrome()
-    return
-  end
   P.RebuildOverrideList()
   P.FlushOverrides()
 end
@@ -7703,23 +9821,20 @@ function P.PrintMouseDiag()
 end
 
 -- Last word on mouse keys. RebindAll must not write CLICK onto BUTTON4/5.
--- Park extras on page-1 slots 8-12. Bind MACRO/SPELL so Bartender4 cannot
--- remap them to CLICK BT4Button:Keybind (mouse buttons ignore that).
+-- Faces on 8-12 (M5, R, M4) keep ACTIONBUTTON. This only rebinds mouse keys
+-- onto those columns; it never wipes a keyboard chord such as R.
 function P.ForceMouseHardware()
   if Locked() then return end
   if P.UseMountBar() then
     P.ApplyBar1Chrome()
     P.EnsureBarDriver()
-    pcall(ClearOverrideBindings, P.barDriver)
-    if console then pcall(ClearOverrideBindings, console) end
+    P.RebuildOverrideList()
+    P.FlushOverrides()
     return
   end
   P.ForceMainPage()
   P.VacateBar6Helpers()
   P.PinHardwareButtons()
-  for i = 8, 12 do
-    ClearCommandKeys("ACTIONBUTTON" .. i)
-  end
   P.BindMouseHardware()
   P.RestoreChatKeys()
   pcall(SaveBindings, GetCurrentBindingSet())
@@ -7755,11 +9870,8 @@ barPin:SetScript("OnEvent", function()
   C_Timer.After(0, function()
     P.EnsureBarDriver()
     P.ApplyBar1Chrome()
-    if Locked() then return end
-    if P.UseMountBar() then
-      pcall(ClearOverrideBindings, P.barDriver)
-      if console then pcall(ClearOverrideBindings, console) end
-    end
+    if Locked() then P.pendingRefresh = true; return end
+    if RefreshLayout then RefreshLayout(true) end
     P.DisableMouseCatch()
   end)
 end)
@@ -7767,6 +9879,16 @@ end)
 -- Resolve one item spec -> {name,id,icon,macrotext,itemID,label,shortKey,key,note}
 local function ResolveItem(item, bindNow)
   ApplyModOverride(item)
+  if item.skyriding then
+    if not (P.UseMountBar and P.UseMountBar()) then return nil end
+    local name = P.Text(item.label) or P.Text(item.name)
+    if not name then return nil end
+    return AttachBindMeta({
+      name = name, label = name, id = item.id,
+      icon = item.iconFile or SpellIcon(item.id, name),
+      bindKey = item.bindKey, key = item.key,
+    }, item.bindKey)
+  end
   if item.sba then
     return AttachBindMeta({sba=true, name=item.name, label=item.label,
       icon=item.iconFile or SpellIcon(SBA_ID), bindKey=item.bindKey}, item.bindKey)
@@ -7845,10 +9967,17 @@ function P.ConnectCastRoutes()
       P.managedCommands[cmd] = true
     end
   end
+  -- Hidden helpers only. Slots 8-10 are Heal / Empower / Move columns.
+  local claimed = {}
+  for _, cmd in pairs(BAR_BINDS) do
+    if type(cmd) == "string" then claimed[cmd] = true end
+  end
   for i = 8, 12 do
     local cmd = "ACTIONBUTTON" .. i
-    ClearCommandKeys(cmd)
-    P.managedCommands[cmd] = true
+    if not claimed[cmd] then
+      ClearCommandKeys(cmd)
+      P.managedCommands[cmd] = true
+    end
   end
 end
 
@@ -7881,7 +10010,17 @@ local function BuildEverything(bindNow)
     P.ForceMainPage()
     P.VacateBar6Helpers()
     wipe(KEEP)
+    P.VacateUnclaimedBarSlots()
     P.extraBarBindings = {}
+    local placedAbsolute = {}
+    local function placeEach(entry, fn)
+      P.EachBarSlot(entry, function(abs, formName)
+        if not placedAbsolute[abs] then
+          placedAbsolute[abs] = true
+          fn(abs, formName)
+        end
+      end)
+    end
     for _, fam in ipairs(families) do
       if fam.tag then P.MigrateFormPrimary(fam.tag) end
       local barList = {}
@@ -7904,28 +10043,37 @@ local function BuildEverything(bindNow)
       end
       for _, barEntry in ipairs(barList) do
         if barEntry then
-          local formNow = PackFormNow()
-          local customP = fam.tag and P.CustomPrimaryFor(fam.tag, barEntry.form or formNow)
-          if customP and barEntry.slot ~= 5 then
-            P.EachBarSlot(barEntry, function(abs) PlacePrimaryOnBar(abs, customP) end)
-            local pn = customP.name or customP.label
-            if pn then PLACED_SPELLS[pn] = true end
-          elseif barEntry.sba then
-            P.EachBarSlot(barEntry, function(abs) PlaceID(abs, SBA_ID) end)
-          elseif barEntry.macro then
-            P.EachBarSlot(barEntry, function(abs)
+          placeEach(barEntry, function(abs, formName)
+            pcall(ClearCursor)
+            local overlay = fam.tag and P.CustomPrimaryFor(fam.tag, formName or barEntry.form)
+            if overlay and P.IsEmptyPrimary(overlay) then
+              ClearSlot(abs)
+              pcall(ClearCursor)
+              return
+            end
+            if overlay then
+              PlacePrimaryOnBar(abs, overlay)
+              local pn = overlay.name or overlay.label
+              if P.Text(pn) then PLACED_SPELLS[pn] = true end
+              pcall(ClearCursor)
+              return
+            end
+            if barEntry.sba then
+              P.PlaceAssisted(abs)
+            elseif barEntry.macro then
               PlaceMacro(abs, barEntry.macro[1], barEntry.macro[2], barEntry.macro[3])
-            end)
-            if barEntry.covers then
-              for _, n in ipairs(barEntry.covers) do PLACED_SPELLS[n] = true end
+              if barEntry.covers then
+                for _, n in ipairs(barEntry.covers) do PLACED_SPELLS[n] = true end
+              end
+            elseif barEntry.spell then
+              local name, id = Known(unpack(barEntry.spell))
+              if name then
+                PlaceID(abs, id)
+                PLACED_SPELLS[name] = true
+              end
             end
-          elseif barEntry.spell then
-            local name, id = Known(unpack(barEntry.spell))
-            if name then
-              P.EachBarSlot(barEntry, function(abs) PlaceID(abs, id) end)
-              PLACED_SPELLS[name] = true
-            end
-          end
+            pcall(ClearCursor)
+          end)
           if barEntry == fam.bar2 and KEEP[barEntry.slot] then
             local bindId = "bar:" .. barEntry.slot
             local helper = EnsureClickButton(bindId)
@@ -7947,6 +10095,8 @@ local function BuildEverything(bindNow)
         end
       end
     end
+    pcall(ClearCursor)
+    P.VacateUnclaimedBarSlots()
   else
     -- Mark bar spells so drop-downs / autofill don't duplicate them.
     for _, fam in ipairs(families) do
@@ -7996,9 +10146,12 @@ local function BuildEverything(bindNow)
     local customP = fam.tag and P.CustomPrimaryFor(fam.tag, PackFormNow())
     local primaryBindKey = FamilyPrimaryBindKey(fam)
     -- Keep the tab face and the primary key on the same ability.
-    if customP and primaryBindKey then
+    if customP and primaryBindKey and not P.IsEmptyPrimary(customP) then
       SuperBindsDB.mods = SuperBindsDB.mods or {}
       SuperBindsDB.mods[primaryBindKey] = customP
+    elseif customP and P.IsEmptyPrimary(customP) and primaryBindKey then
+      SuperBindsDB.mods = SuperBindsDB.mods or {}
+      SuperBindsDB.mods[primaryBindKey] = nil
     end
     local resolved = {}
     for _, item in ipairs(fam.items) do
@@ -8054,7 +10207,9 @@ local function BuildEverything(bindNow)
     local primary
     if fam.bar then primary = BarPrimary(fam.bar)
     else primary = slotFace or resolved[1] end
-    if customP then
+    if customP and P.IsEmptyPrimary(customP) then
+      primary = { empty = true, label = "", name = "", icon = 134400, key = slotKey }
+    elseif customP then
       local p = customP
       primary = {
         name = p.name, id = p.id, label = p.label or p.name, icon = p.icon or SpellIcon(p.id),
@@ -8067,7 +10222,25 @@ local function BuildEverything(bindNow)
     elseif primary then
       primary.key = slotKey or primary.key
     end
+    if fam.bar and fam.bar.slot then
+      local abs = (P.LiveActionSlot and P.LiveActionSlot(fam.bar.slot)) or P.ActionSlot(fam.bar.slot, PackFormNow())
+      local native = P.NativeAbility(abs)
+      local shapeshiftFace = P.AbilityLooksLikeShapeshift and P.AbilityLooksLikeShapeshift(fam.bar)
+      if native then
+        native.key = slotKey
+        native.sba = P.IsAssistedAbility(native) or nil
+        if shapeshiftFace then
+          if P.AbilityLooksLikeShapeshift(native) then primary = native end
+        elseif P.UseMountBar and P.UseMountBar() then
+          local rel = tonumber(fam.bar.slot)
+          if rel == 1 or rel == 2 or rel == 7 then primary = native end
+        else
+          primary = native
+        end
+      end
+    end
     SetTabFace(tab, primary)
+    tab._sbNativeSBA = primary and P.IsAssistedAbility(primary) or false
     if fam.tag == "+" and tab.keyText then
       StyleKeyText(tab.keyText)
       tab.keyText:SetText("+")
@@ -8080,18 +10253,42 @@ local function BuildEverything(bindNow)
     end
     -- Bar faces: click and hotkey both UseAction on that slot. hide/show
     -- only fades ActionButton 1-7; do not disable their mouse.
-    if primary and fam.bar and fam.bar.slot and not Locked() then
+    -- Shapeshifts are the same spell on every page, including skyriding.
+    local shapeshiftFace = fam.bar and P.AbilityLooksLikeShapeshift and P.AbilityLooksLikeShapeshift(fam.bar)
+    if shapeshiftFace and primary and not Locked() then
+      tab:EnableMouse(true)
+      if tab.SetMouseClickEnabled then tab:SetMouseClickEnabled(true) end
+      tab:SetAttribute("type", "spell")
+      tab:SetAttribute("typerelease", "spell")
+      tab:SetAttribute("spell", primary.name or primary.label)
+      tab:SetAttribute("relslot", nil)
+      tab:SetAttribute("action", nil)
+      tab:SetAttribute("shift-type1", "")
+      tab:SetAttribute("shift-typerelease1", "")
+    elseif primary and fam.bar and fam.bar.slot and not Locked() then
       tab:EnableMouse(true)
       if tab.SetMouseClickEnabled then tab:SetMouseClickEnabled(true) end
       tab:SetAttribute("type", "action")
       tab:SetAttribute("typerelease", "action")
       tab:SetAttribute("relslot", fam.bar.slot)
-      local abs = (P.ActionSlot and P.ActionSlot(fam.bar.slot, PackFormNow())) or fam.bar.slot
+      local abs = (P.LiveActionSlot and P.LiveActionSlot(fam.bar.slot))
+        or (P.ActionSlot and P.ActionSlot(fam.bar.slot, PackFormNow())) or fam.bar.slot
       tab:SetAttribute("action", abs)
+      -- Shift is layout-drag, not a modified cast of this face.
+      tab:SetAttribute("shift-type1", "")
+      tab:SetAttribute("shift-typerelease1", "")
     end
-    if primary and fam.bar and fam.bar.slot then
+    if shapeshiftFace and primary and fam.bar and fam.bar.slot then
+      local defaultKey = fam.bar.bindKey or fam.bar.key
+      local bindId = "bar:" .. fam.bar.slot
+      WireQuickKeybind(tab, P.HotkeyCommand(tab, fam.bar.slot, defaultKey), bindId, defaultKey)
+      local live = EffectiveKey(bindId, defaultKey)
+      local label = ShortKey(live) or ""
+      if tab.keyText then tab.keyText:SetText(label) end
+      tab.tipKey = label
+    elseif primary and fam.bar and fam.bar.slot then
       local action = "ACTIONBUTTON" .. fam.bar.slot
-      local defaultKey = fam.bar.bindKey
+      local defaultKey = fam.bar.bindKey or fam.bar.key
       if not defaultKey then
         for key, act in pairs(BAR_BINDS) do
           if act == action then defaultKey = key break end
@@ -8276,6 +10473,12 @@ local function BuildEverything(bindNow)
     P.RebindAll()
   else
     RefreshBindLabels()
+    if not Locked() then
+      for _, frame in ipairs(P.BindFrames()) do
+        local keep = EffectiveKey(frame._sbBindId, frame._sbDefaultKey)
+        P.ReleaseStaleBindKeys(frame, frame._sbBindId, keep, frame.commandName)
+      end
+    end
   end
   -- Login / form rebuild must still arm the stance-page clicker. bindNow-only
   -- left tabs stuck on caster slots after /reload until the next full Apply.
@@ -8536,6 +10739,7 @@ boot:SetScript("OnEvent", function(self, event, unit, _, spellID)
     if P.pendingQKB then OnQuickKeybindMode(InQuickKeybind()); P.pendingQKB = nil end
     if P.pendingConsoleVis then P.ApplyConsoleMountedHide() end
     if P.pendingRefresh then RefreshLayout(true) end
+    if P._pendingSpecialBar and P.SyncSpecialBarState then P.SyncSpecialBarState() end
     if P.pendingSpecPack then
       local n = P.pendingSpecPack
       P.pendingSpecPack = nil
@@ -8547,6 +10751,7 @@ boot:SetScript("OnEvent", function(self, event, unit, _, spellID)
   end
   if event == "UNIT_SPELLCAST_SUCCEEDED" then
     if unit ~= "player" then return end
+    if P.NotePressPulseCast then P.NotePressPulseCast(spellID) end
     local id = P.ID(spellID)
     if id then
       P.castAt = P.castAt or {}
@@ -8555,11 +10760,23 @@ boot:SetScript("OnEvent", function(self, event, unit, _, spellID)
     return
   end
   if event == "UPDATE_SHAPESHIFT_FORM" then
+    P.PULSE_GCD = nil
     -- Icons only. Bars were placed on apply; PlaceID on every shift steals the cursor.
     if P.ApplyEndcapArt then P.ApplyEndcapArt() end
     if SuperBindsDB.applied then
-      if Locked() then P.pendingRefresh = true
-      else RefreshLayout(true) end
+      local form = PackFormNow()
+      if form == P._layoutForm then
+        if P.DriveIconCooldowns then P.DriveIconCooldowns() end
+        return
+      end
+      P._layoutForm = form
+      P._shapeGen = (P._shapeGen or 0) + 1
+      local gen = P._shapeGen
+      C_Timer.After(0.08, function()
+        if gen ~= P._shapeGen then return end
+        if Locked() then P.pendingRefresh = true
+        else RefreshLayout(true) end
+      end)
     end
     return
   end
@@ -8608,6 +10825,7 @@ function RefreshLayout(automatic)
     -- ActionButton cooldown updates.
     SuperBindsDB.display = BuildEverything(automatic ~= true)
     P.EnsureBarDriver()
+    P.SyncSpecialBarState()
     P.ApplyBar1Chrome()
     P.RebuildOverrideList()
     P.FlushOverrides()
@@ -8647,6 +10865,7 @@ function P.RestorePositions()
   end
   P.RestoreTotemPlaces()
   if P.PlaceBindButton then P.PlaceBindButton() end
+  if P.PlacePressPulse then P.PlacePressPulse() end
 end
 
 function P.SnapshotCurrent()
@@ -8800,17 +11019,13 @@ function P.ApplyMountBarSetting()
   P.SyncMountBarDriver()
   P.ApplyBar1Chrome()
   if Locked() then return end
-  if P.UseMountBar() then
-    pcall(ClearOverrideBindings, P.barDriver)
-    if console then pcall(ClearOverrideBindings, console) end
-  else
-    P.RebuildOverrideList()
-    P.FlushOverrides()
-  end
+  P.RebuildOverrideList()
+  P.FlushOverrides()
 end
 
 function P.OpenSettings()
   P.RegisterSettings()
+  if P.WatchSettingsPulsePreview then P.WatchSettingsPulsePreview() end
   local cat = P.settingsCategory
   if not cat or type(Settings) ~= "table" or type(Settings.OpenToCategory) ~= "function" then
     P.Report("Settings panel is not available on this client.")
@@ -8818,9 +11033,13 @@ function P.OpenSettings()
   end
   local id = cat.GetID and cat:GetID() or cat.ID
   if id then Settings.OpenToCategory(id) end
+  if SuperBindsDB.showPressPulse ~= false and P.BeginPulsePreview then
+    P.BeginPulsePreview()
+  end
 end
 
 function P.RegisterSettings()
+  if P.WatchSettingsPulsePreview then P.WatchSettingsPulsePreview() end
   if P.settingsCategory then return end
   if type(Settings) ~= "table" then return end
   if type(Settings.RegisterVerticalLayoutCategory) ~= "function" then return end
@@ -8859,6 +11078,70 @@ function P.RegisterSettings()
   addBool("hideConsoleMounted", "Hide console while mounted", defTrue,
     "Hide the console on a mount or in a vehicle. The Blizzard mount bar can still show.",
     function() P.ApplyConsoleMountedHide() end)
+
+  if type(CreateSettingsListSectionHeaderInitializer) == "function" and layout then
+    layout:AddInitializer(CreateSettingsListSectionHeaderInitializer("Timing"))
+  end
+  addBool("showPressPulse", "Ability timing effect", defTrue,
+    "Shows in combat. Opening this panel previews it out of combat. Gold bezel, soft glow, pip on the GCD. Drag the ring to move it.",
+    function(value)
+      if value then
+        if P.BeginPulsePreview then P.BeginPulsePreview() end
+      else
+        if P.EndPulsePreview then P.EndPulsePreview() end
+        if P.ApplyPressPulseShown then P.ApplyPressPulseShown() end
+      end
+    end)
+
+  local numType = (Settings.VarType and Settings.VarType.Number) or type(1)
+  local pulseOpacitySetting
+  if type(Settings.CreateSliderOptions) == "function" then
+    pulseOpacitySetting = Settings.RegisterProxySetting(
+      category,
+      "SUPERBINDS_pulseOpacity",
+      numType,
+      "Timing effect opacity",
+      20,
+      function()
+        return P.PulseOpacityPercent()
+      end,
+      function(value)
+        P.CommitPulseOpacity(value, true)
+      end
+    )
+    pcall(function()
+      pulseOpacitySetting:SetValueChangedCallback(function(_, value)
+        P.CommitPulseOpacity(value, true)
+      end)
+    end)
+    local options = Settings.CreateSliderOptions(10, 100, 5)
+    if options.SetLabelFormatter then
+      pcall(function()
+        local label = MinimalSliderWithSteppersMixin and MinimalSliderWithSteppersMixin.Label and MinimalSliderWithSteppersMixin.Label.Right
+        options:SetLabelFormatter(label, function(v)
+          return tostring(math.floor((P.PublicNumber(v) or 0) + 0.5)) .. "%"
+        end)
+      end)
+    end
+    local tooltip = "How solid the timing ring is. 20% is the shipped look. Drag to preview out of combat; glow and bezel follow this slider."
+    if type(Settings.CreateSlider) == "function" then
+      Settings.CreateSlider(category, pulseOpacitySetting, options, tooltip)
+    elseif type(Settings.CreateSliderInitializer) == "function" and layout then
+      layout:AddInitializer(Settings.CreateSliderInitializer(pulseOpacitySetting, options, tooltip))
+    end
+  end
+  if type(CreateSettingsButtonInitializer) == "function" and layout then
+    layout:AddInitializer(CreateSettingsButtonInitializer(
+      "Timing effect opacity", "Default",
+      function()
+        SuperBindsDB.pulseOpacity = P.PULSE_OPACITY_DEFAULT or 0.2
+        if pulseOpacitySetting and pulseOpacitySetting.SetValue then
+          pcall(pulseOpacitySetting.SetValue, pulseOpacitySetting, 20)
+        end
+        if P.CommitPulseOpacity then P.CommitPulseOpacity(20, true) end
+      end,
+      "Restore the shipped hoop opacity (20%).", true))
+  end
 
   if type(CreateSettingsListSectionHeaderInitializer) == "function" and layout then
     layout:AddInitializer(CreateSettingsListSectionHeaderInitializer("Console"))
@@ -8976,16 +11259,49 @@ function P.ApplyLevel80Talents()
   P.Report("Talent spend is pack data. This engine does not spend a class tree.")
 end
 
+function P.RestoreStockPrimary(tag)
+  if Locked() then P.Report("Leave combat first."); return false end
+  local function one(t)
+    if not P.Text(t) or not P.FamilyHasBars(t) then return false end
+    local c = SuperBindsDB.custom and SuperBindsDB.custom[t]
+    if type(c) == "table" then
+      c.formPrimary = nil
+      c.primary = nil
+    end
+    if P.PlaceFamilyStockAllForms then P.PlaceFamilyStockAllForms(t) end
+    return true
+  end
+  local n = 0
+  if P.Text(tag) then
+    if one(tag) then n = 1 end
+  else
+    local pack = P.CurrentPack and P.CurrentPack()
+    for _, fam in ipairs((pack and pack.families) or {}) do
+      if fam.tag and one(fam.tag) then n = n + 1 end
+    end
+  end
+  if n == 0 then P.Report("No form-bar family to restore."); return false end
+  RefreshLayout(true)
+  if P.Text(tag) then
+    print("|cff0070ddSuper Binds:|r " .. tag .. " parent is stock on every form bar.")
+  else
+    print("|cff0070ddSuper Binds:|r form-bar parents restored to stock on every form bar.")
+  end
+  return true
+end
+
 function P.SlashHelp()
   print("|cff0070ddSuper Binds commands:|r")
   print("  |cffffffff/superbinds|r  apply current pack and show the key map")
   print("  |cffffffff/superbinds reset|r  restore pack default keys; console stays")
+  print("  |cffffffff/superbinds restore [E]|r  stock parent for this form (extras stay)")
   print("  |cffffffff/superbinds load <name>|r  load a shipped or saved pack")
   print("  |cffffffff/superbinds save [name]|r  save overlay (keys, faces, positions)")
   print("  |cffffffff/superbinds list|r  shipped + saved packs")
   print("  |cffffffff/superbinds bind|r  Quick Keybind (BIND on the console)")
   print("  |cffffffff/superbinds map|r  field guide")
   print("  |cffffffff/superbinds keys|r  reserved chords")
+  print("  |cffffffff/superbinds probe|r  spellbook + keys + live slots (copy window; /reload to save)")
   print("  |cffffffff/superbinds hide|r / |cffffffffshow|r  Blizzard bar 1")
   print("  |cffffffff/superbinds options|r  settings")
 end
@@ -8998,6 +11314,19 @@ function P.SlashBinds(msg)
   rest = strtrim(rest or "")
   if cmd == "" then
     Apply(true)
+    return
+  end
+  if cmd == "restore" or cmd == "stock" then
+    local tag = rest ~= "" and rest or nil
+    if tag then
+      tag = tag:upper()
+      if tag == "M5" or tag == "M4" then
+        -- keep mouse-family tags as written
+      elseif tag == "BUTTON5" then tag = "M5"
+      elseif tag == "BUTTON4" then tag = "M4"
+      end
+    end
+    P.RestoreStockPrimary(tag)
     return
   end
   if cmd == "default" or cmd == "defaults" or cmd == "reset" then
@@ -9019,7 +11348,9 @@ function P.SlashBinds(msg)
       SuperBindsDB.activeProfile = pack.name
       print("|cff0070ddSuper Binds:|r reset to " .. pack.name .. " defaults.")
     end
+    P._forcePackKeys = true
     Apply(true)
+    P._forcePackKeys = nil
     return
   end
   if cmd == "families" then
@@ -9066,6 +11397,10 @@ function P.SlashBinds(msg)
   end
   if cmd == "help" or cmd == "?" then
     P.SlashHelp()
+    return
+  end
+  if cmd == "probe" or cmd == "spells" or cmd == "book" or cmd == "dump" or cmd == "layout" or cmd == "log" then
+    P.PrintProbe()
     return
   end
   if cmd == "options" or cmd == "settings" or cmd == "config" then
@@ -9118,7 +11453,7 @@ SLASH_SBKEYMAP1 = "/keymap"
 SLASH_SBKEYMAP2 = "/km"
 SlashCmdList.SBKEYMAP = P.ToggleKeymap
 
-print("|cff0070ddSuper Binds:|r 0.5.18 loaded. |cffffffff/superbinds load Feral|r, |cffffffffGuardian|r, or |cffffffffBalance|r. |cffffffff/superbinds keys|r for reserved chords.")
+print("|cff0070ddSuper Binds:|r 0.5.82 loaded. |cffffffff/superbinds load Elune's Chosen|r, |cffffffffGuardian|r, |cffffffffFeral|r, or |cffffffffBalance|r. |cffffffff/superbinds keys|r for reserved chords.")
 pcall(function() P.RegisterSettings() end)
 
 SuperBinds = P
