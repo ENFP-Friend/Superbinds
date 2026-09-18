@@ -4,6 +4,22 @@ In-game captures under `docs/shots/`. PNG. These are the **Druid packs** on Supe
 
 Product: [`../README.md`](../README.md). Endcap files: [`ART.md`](ART.md).
 
+## Horde vs Alliance default bar
+
+Unshifted console. Horde wind rider vs Alliance owl. The Alliance still is the Shaman Binds default (`01-console-idle.png` from that repo).
+
+### Horde
+
+Horde Haranir, unshifted. Wind-rider endcaps (`DruidEndcap_horde.tga`). Families: Attack E · Disrupt Q · Heal M5 · Forms · Move M4 · Protect C · Empower R · Travel X · Thorn · Buffs · Recover.
+
+![Horde default bar — wind-rider endcaps](shots/04-horde-default-bar.png)
+
+### Alliance
+
+Owl endcaps (`ShamanEndcap.tga`). Copied from Shaman Binds GitHub front page.
+
+![Alliance default bar — owl endcaps](shots/05-alliance-default-bar.png)
+
 ## Haranir Druid — form bar
 
 Feral pack on a Horde Haranir. Families left to right: Attack E · Disrupt Q · Heal 2 · Forms · Move M4 · Protect C · Empower · Travel X · Buffs · Recover. Keyboard faces stay `ACTIONBUTTON`; the native page under them is the form bar.

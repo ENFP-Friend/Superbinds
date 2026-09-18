@@ -2,7 +2,7 @@
 
 Endcaps, chrome, and (optional) ready-meters. Not shaman totem poles — those stay in Shaman Binds. Druid packs ship `sculptures={}`; the engine still has a generic sculpture renderer if a later pack wants crowns.
 
-Product: [`../README.md`](../README.md). Pack theme fields: [`PROFILE-SCHEMA.md`](PROFILE-SCHEMA.md). Live Haranir bar (cat / travel / Horde default): [`SHOTS.md`](SHOTS.md).
+Product: [`../README.md`](../README.md). Pack theme fields: [`PROFILE-SCHEMA.md`](PROFILE-SCHEMA.md). Live Haranir bar plus Horde vs Alliance default: [`SHOTS.md`](SHOTS.md).
 
 Live textures: `Media\*.tga` (what WoW loads). Packed PNG sources: `assets\`. Workshop drafts: ShamanBinds `assets\` (this Cursor workspace) — **not** TOC-loaded.
 

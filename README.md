@@ -8,6 +8,20 @@ Layouts are **profile data** — the engine has no class spells. The product is 
 
 Current TOC packs: **Elune's Chosen** (Guardian + hero tree 24, default), **Guardian** (fallback), **Feral**, **Balance**.
 
+## Horde vs Alliance default bar
+
+Unshifted endcaps follow faction. **Horde** uses the wind rider; **Alliance** uses the owl (the same sculpture as [Shaman Binds](https://github.com/ENFP-Friend/ShamanBinds)). Shapeshift still swaps to the animal busts.
+
+**Horde** — wind-rider endcaps.
+
+![Horde default bar — wind-rider endcaps](docs/shots/04-horde-default-bar.png)
+
+**Alliance** — owl endcaps, Shaman Binds default console.
+
+![Alliance default bar — owl endcaps](docs/shots/05-alliance-default-bar.png)
+
+## Form bars
+
 ![Haranir cat form — wolverine endcaps, same keys as every stance](docs/shots/01-haranir-cat.png)
 
 ![Haranir travel form — sable endcaps, caster page under the same keys](docs/shots/02-haranir-travel.png)
