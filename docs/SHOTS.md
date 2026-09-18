@@ -6,7 +6,7 @@ Product: [`../README.md`](../README.md). Endcap files: [`ART.md`](ART.md).
 
 ## Horde vs Alliance default bar
 
-Unshifted console. Horde wind rider vs Alliance owl. The Alliance still is the Shaman Binds default (`01-console-idle.png` from that repo).
+Unshifted console. Horde wind rider vs Alliance owl. Alliance is the Shaman Binds default strip.
 
 ### Horde
 
@@ -16,7 +16,7 @@ Horde Haranir, unshifted. Wind-rider endcaps (`DruidEndcap_horde.tga`). Families
 
 ### Alliance
 
-Owl endcaps (`ShamanEndcap.tga`). Copied from Shaman Binds GitHub front page.
+Owl endcaps (`ShamanEndcap.tga`). Shaman Binds default strip: Attack E · Disrupt Q · Heal M5 · Totems · Move M4 · Protect C · Empower R · Travel X · Buffs · Recover · Trinket 1 / 2.
 
 ![Alliance default bar — owl endcaps](shots/05-alliance-default-bar.png)
 
