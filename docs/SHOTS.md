@@ -8,11 +8,11 @@ Product: [`../README.md`](../README.md). Endcap files: [`ART.md`](ART.md).
 
 **SuperBinds 0.5.116** — Druid so far: form bars, hotkey helper, GCD attack helper, cat attack helper. Blizzard’s assisted rotation omits bleeds, so they do not stack from that helper.
 
-<video src="shots/superbinds-05116-druid-helpers.mp4" controls muted playsinline width="720"></video>
+<video src="https://github.com/user-attachments/assets/b01152df-cb3e-40d1-8ae5-09792e1d6304" controls muted playsinline></video>
 
 **Shaman Binds origin (WIP)** — Haranir Druid with totem-pole timers, the ultimate, menus and drawers. Not implemented in SuperBinds yet.
 
-<video src="shots/shamanbinds-wip-haranir-totems.mp4" controls muted playsinline width="720"></video>
+<video src="https://github.com/user-attachments/assets/64c0e38c-e97c-4613-a837-e4ed698446d7" controls muted playsinline></video>
 
 ## Horde vs Alliance default bar
 
