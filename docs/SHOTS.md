@@ -10,7 +10,7 @@ Product: [`../README.md`](../README.md). Endcap files: [`ART.md`](ART.md).
 
 <video src="https://github.com/user-attachments/assets/c9f4c4cc-6c1d-4e72-859e-208a43a627ba" controls muted playsinline></video>
 
-**Moonkin / bat form** — same keys, moonkin page and endcap.
+**Haranir bat form** — same keys, bat-form page and endcap.
 
 <video src="https://github.com/user-attachments/assets/094719ad-63a4-406e-a269-537c0861d8ae" controls muted playsinline></video>
 
@@ -21,6 +21,14 @@ Product: [`../README.md`](../README.md). Endcap files: [`ART.md`](ART.md).
 **Shaman Binds origin (WIP)** — Haranir Druid with totem-pole timers, the ultimate, menus and drawers. Not implemented in SuperBinds yet.
 
 <video src="https://github.com/user-attachments/assets/64c0e38c-e97c-4613-a837-e4ed698446d7" controls muted playsinline></video>
+
+![Field guide — every ability and its key](shots/06-field-guide.png)
+
+**Field guide** (`/keymap`) — a quick look at every spell and binding.
+
+![Hotkey menu — BIND drawers per family](shots/07-hotkey-menu.jpg)
+
+**Hotkey menu** — BIND mode. Hover an icon, press a key or scroll. Each form keeps its own slot memory.
 
 ## Horde vs Alliance default bar
 

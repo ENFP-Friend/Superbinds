@@ -8,7 +8,7 @@ Class-agnostic Midnight action console. **One bar, one set of keys, a different 
 
 <video src="https://github.com/user-attachments/assets/094719ad-63a4-406e-a269-537c0861d8ae" controls muted playsinline></video>
 
-**Moonkin / bat form** — same keys, moonkin page and endcap.
+**Haranir bat form** — same keys, bat-form page and endcap.
 
 <video src="https://github.com/user-attachments/assets/b01152df-cb3e-40d1-8ae5-09792e1d6304" controls muted playsinline></video>
 
@@ -18,9 +18,17 @@ Class-agnostic Midnight action console. **One bar, one set of keys, a different 
 
 **Shaman Binds origin (WIP)** — totem-pole timers, ultimate, menus and drawers. SuperBinds is the port; those timers are **not** in SuperBinds yet.
 
+![Field guide — every ability and its key](docs/shots/06-field-guide.png)
+
+**Field guide** (`/keymap`) — a quick look at every spell and binding.
+
+![Hotkey menu — BIND drawers per family](docs/shots/07-hotkey-menu.jpg)
+
+**Hotkey menu** — BIND mode. Hover an icon, press a key or scroll. Each form keeps its own slot memory.
+
 ## The bar
 
-Same labeled keys in every stance. The **native slot under the key** is what changes (caster, cat, bear, moonkin, skyriding).
+Same labeled keys in every stance. The **native slot under the key** is what changes (caster, cat, bear, bat form, skyriding).
 
 ![Horde default bar — wind-rider endcaps](docs/shots/04-horde-default-bar.png)
 
