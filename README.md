@@ -1,12 +1,22 @@
 # Super Binds
 
-Class-agnostic Midnight action console, ported from Shaman Binds. **0.5.83**.
+Class-agnostic Midnight action console, ported from Shaman Binds. **0.5.116**.
 
 Repo: [github.com/ENFP-Friend/Superbinds](https://github.com/ENFP-Friend/Superbinds)
 
 Layouts are **profile data** — the engine has no class spells. The product is one compact bar whose **hotkey, label, and native slot stay one object**, with a **separate action bar per form** and the **same keys on every stance**.
 
 Current TOC packs: **Elune Prime** (Guardian + hero tree 24, default), **Elune's Chosen** (previous Elune strip), **Guardian** (fallback), **Feral**, **Balance**.
+
+## Demo
+
+**SuperBinds 0.5.116** — Druid so far: every form bar, the hotkey helper, the GCD attack helper, and the cat attack helper. Blizzard’s assisted rotation omits bleeds, so they do not stack from that helper.
+
+<video src="docs/shots/superbinds-05116-druid-helpers.mp4" controls muted playsinline width="720"></video>
+
+**Shaman Binds origin (WIP)** — Haranir Druid with totem-pole timers, the ultimate, menus and drawers. SuperBinds is the port; those totem timers are **not** in SuperBinds yet.
+
+<video src="docs/shots/shamanbinds-wip-haranir-totems.mp4" controls muted playsinline width="720"></video>
 
 ## Horde vs Alliance default bar
 
@@ -34,6 +44,7 @@ Unshifted endcaps follow faction. **Horde** uses the wind rider; **Alliance** us
 - Console art (endcaps, TGA): [`docs/ART.md`](docs/ART.md)
 - In-game Haranir form bar: [`docs/SHOTS.md`](docs/SHOTS.md)
 - Known errors + owed rework: [`docs/ISSUES.md`](docs/ISSUES.md)
+- Druid experimental (next-best readout): [`docs/EXPERIMENTAL.md`](docs/EXPERIMENTAL.md)
 - Install: [`docs/INSTALL.md`](docs/INSTALL.md)
 - Reference (not TOC-loaded): [`_reference/ShamanBinds.lua`](_reference/ShamanBinds.lua)
 
@@ -57,7 +68,7 @@ Each pack declares `actionBars` and per-family `bars`. Apply (`/superbinds`, out
 | **M4** | 10 | Dash on **every** form bar (`allBars`) | | | |
 | Wheel | 3–6 | Elune Prime: Bear / Cat / Travel. Thorn Bloom is **Shift-E**. Elune's Chosen: Shift-WheelUp Thorn Bloom. Other packs: Moonkin on Shift-WheelUp | | | |
 
-Ground travel **shares the caster bar** (`use="caster"`) and still gets its own endcap. **Skyriding / flight form** is still Travel Form, but it uses bonus bar 5 (absolute slots ~121–132), not caster. Shapeshifts are **manual** keys, never next-cast. The Forms wheel (Bear / Cat / Travel) stays those spells in every stance, including skyriding — Aerial Halt is not a form.
+Ground travel **shares the caster bar** (`use="caster"`) and still gets its own endcap **and its own drawers**. **Skyriding / flight form** is still Travel Form (same extras list as ground travel), but it uses bonus bar 5 (absolute slots ~121–132), not caster. Shapeshifts are **manual** keys, never next-cast. The Forms wheel (Bear / Cat / Travel) stays those spells in every stance, including skyriding — Aerial Halt is not a form.
 
 While skyriding the console stays up and the default WoW bar is hidden. Live columns: **E** Surge Forward, **Q** Second Wind, **C** Whirling Surge. **1** Aerial Halt and **2** Skyward Ascent sit on the console (they are not Forms or Thorn). Elune's Chosen Shift-wheel-up stays Thorn Bloom; Elune Prime Thorn is Shift-E.
 
@@ -72,13 +83,13 @@ Spellbook drops do **not** need Shift. Shift-drag a **drawer extra** onto the pa
 - Compact brass strip: family tabs, hover drawers, BIND, `::` grip, drop rail `+`
 - Families: Attack E · Disrupt Q · Heal M5 · Forms wheel · Move M4 · Protect C · Empower R · Travel X · Buffs · Recover
 - Hover a tab to open that family. BIND opens every drawer as a **narrow column above its own tab** (odd/even rows so neighbors do not pile up)
-- BIND a **drawer extra** to a strip key (Q, E, M4, …) **swaps**: extra becomes the face, the old face moves into that drawer. Rebinding the face itself does not PlaceAction (that emptied the slot)
+- BIND a **strip face** to a key only on **this form** (cat E→2 does not steal bear E). BIND a **drawer extra** to a key binds that extra (it does not promote onto the strip). Chat prints `Shred cat → 2`.
 - Shift-drag a **drawer extra** onto the parent **swaps** (old parent moves into the drawer). Shift-drag a face **off the bar** empties this form’s slot (`formPrimary.empty`); `/superbinds restore E` restocks. Drop on `+` adds a click-only extra. Spellbook / rune-book drop on the parent is `PlaceAction` on that form’s slot
 - Cooldown swipe + countdown on tabs and drawer rows
 - Assisted-combat **blue shimmer** is paint-only (`GetNextCastSpell(false)`). Do not `SetActionUIButton`. Midnight combat IDs stay secret — texture/cooldown APIs get the raw id. Shapeshifts are never suggested
 - Endcaps follow the **animal** (bear / cat / travel). Unshifted: Alliance owl or Horde wyvern. Moonkin not started
 - Hide Blizzard bar 1 (optional). Extra Action stays. Skyriding / flight form hides the default bar and keeps this console. Enter / `/` stay chat. Ctrl-wheel zooms unless a pack claimed it
-- Combat GCD pulse is a thin gold bezel on the console (native cooldown swipe, soft ring glow; combat-only unless settings preview)
+- Combat GCD pulse: dark swipe runs to the gold slice (9 o'clock–12) during the GCD; press while the edge travels through that slice (default 0.75s). Combat-only unless settings preview
 
 ## Packs
 
@@ -106,4 +117,4 @@ Custom saves store an overlay plus the base pack name. Shipped tables are not ov
 
 ## Constraints
 
-Lua 200 locals per file. No comparing secret numbers. No `SetActionUIButton`. No WTF / `bindings-cache.wtf` writes while WoW is running. `@cursor` needs a real action slot. Unmodified wheel is camera unless BIND or the pack claimed it.
+Lua 200 locals per file. Lua 5.1 **60 upvalues** per function (`BuildEverything` helpers go on `P._L` — see [`docs/NOTES.md`](docs/NOTES.md#agent-traps)). No comparing secret numbers. `P.Number` is a boolean type-check. No `SetActionUIButton`. No WTF / `bindings-cache.wtf` writes while WoW is running. `@cursor` needs a real action slot. Unmodified wheel is camera unless BIND or the pack claimed it.

@@ -1,8 +1,18 @@
 # Screenshots
 
-In-game captures under `docs/shots/`. PNG. These are the **Druid packs** on SuperBinds (Guardian / Feral / Balance) — not the Shaman Binds addon. Same ten family tabs and keys every stance; endcaps and tab faces follow Haranir form.
+In-game captures under `docs/shots/`. PNG stills plus two silent MP4 demos (under 10 MB, no audio, GitHub-ready). These are the **Druid packs** on SuperBinds (Guardian / Feral / Balance) — not the Shaman Binds addon, except the origin WIP clip called out below. Same ten family tabs and keys every stance; endcaps and tab faces follow Haranir form.
 
 Product: [`../README.md`](../README.md). Endcap files: [`ART.md`](ART.md).
+
+## Demo
+
+**SuperBinds 0.5.116** — Druid so far: form bars, hotkey helper, GCD attack helper, cat attack helper. Blizzard’s assisted rotation omits bleeds, so they do not stack from that helper.
+
+<video src="shots/superbinds-05116-druid-helpers.mp4" controls muted playsinline width="720"></video>
+
+**Shaman Binds origin (WIP)** — Haranir Druid with totem-pole timers, the ultimate, menus and drawers. Not implemented in SuperBinds yet.
+
+<video src="shots/shamanbinds-wip-haranir-totems.mp4" controls muted playsinline width="720"></video>
 
 ## Horde vs Alliance default bar
 
