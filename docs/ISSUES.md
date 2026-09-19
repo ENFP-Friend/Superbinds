@@ -17,7 +17,7 @@ One **column** = relative slot **1–12** = `ACTIONBUTTONN` = console tab = that
 | travel | shares caster (ground) | 1 |
 | skyriding | bonus 5 | **121** (still Travel Form) |
 
-Same keys every stance. Click the tab and press the labeled key must be the **same** ability **in this form**. Overlay (`formPrimary`) is a restock log **after** the slot changes. SBA shimmer is paint-only. Shapeshifts are never next-cast. No `SetActionUIButton`. No WTF writes while WoW is running. Lua 200 locals. No `if class == "DRUID"` in the engine.
+Same keys every stance. Click the tab and press the labeled key must be the **same** ability **in this form**. Overlay (`formPrimary`) is a restock log **after** the slot changes. SBA shimmer is paint-only. Shapeshifts are never next-cast. No `SetActionUIButton`. No WTF writes while WoW is running. Lua 200 locals. Lua 5.1 60 upvalues (`BuildEverything` → `P._L`). No `if class == "DRUID"` in the engine.
 
 ---
 
@@ -57,6 +57,18 @@ Skyriding / druid flight form is still Travel Form (`bonus=5`, abs ~121–132). 
 | BIND on Q | Rebinding the strip face does not PlaceAction the same spell (slot stays filled). |
 | BIND drawer → Q | Extra and face **swap**. Old face moves into that drawer. |
 | BIND board | Narrow columns above each family tab (odd/even rows). |
+
+---
+
+## Closed 2026-09-19 (0.5.94–0.5.98)
+
+| Check | Result |
+|---|---|
+| Drawers per stance | `addedForms` / `hiddenForms` / `orderForms` only. Legacy global `custom.added` / `custom.hidden` must not paint. |
+| Travel extras | `DrawerForm` is travel for ground travel **and** skyriding. Rebuild when drawer form changes, not only bonus page. |
+| Column BIND | `formBinds[form]["bar:N"]` + bonusbar override. Cat Attack 2 does not steal bear E. Drawer BIND does not promote onto a strip key. Chat: `Shred cat → 2`. |
+| Bind labels | `EffectiveKey` uses `match("^bar:")`. `find(..., true)` never applied `formBinds`. |
+| Load error 60 upvalues | `BuildEverything` calls helpers through `P._L`. Do not close new file locals from that function. |
 
 ---
 

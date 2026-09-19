@@ -58,9 +58,9 @@ SuperBinds.RegisterProfile({
       },
       items={
         {spell={8921},label="Moonfire",bindKey="SHIFT-E",target="harm",note="ranged tag"},
-        {spell={5176,190984},label="Wrath",bindKey="CTRL-E",target="harm"},
-        {spell={77758,106832},label="Thrash",target="harm",note="bear bleed · click"},
-        {spell={213771,106785,213764},label="Swipe",target="harm",note="filler · click"},
+        {spell={5176,190984},label="Wrath",bindKey="CTRL-E",target="harm",form={"caster","moonkin"}},
+        {spell={77758,106832},label="Thrash",target="harm",form={"cat","bear"},note="bear bleed · click"},
+        {spell={213771,106785,213764},label="Swipe",target="harm",form={"cat","bear"},note="filler · click"},
         {spell={1822},label="Rake",target="harm",form="cat"},
       }},
     {tag="Q",title="Disrupt · Q",caption="DISRUPT",
@@ -71,8 +71,8 @@ SuperBinds.RegisterProfile({
         moonkin={slot=2,key="Q",spell={339},label="Entangling Roots",target="harm"},
       },
       items={
-        {spell={106839},label="Skull Bash",bindKey="SHIFT-Q",target="harm",note="interrupt when talented"},
-        {spell={339},label="Entangling Roots",target="harm",note="click"},
+        {spell={106839},label="Skull Bash",bindKey="SHIFT-Q",target="harm",form={"cat","bear"},note="interrupt when talented"},
+        {spell={339},label="Entangling Roots",target="harm",form={"cat","bear"},note="click"},
       }},
     {tag="M5",title="Heal · M5",caption="HEAL",
       bars={
@@ -83,7 +83,7 @@ SuperBinds.RegisterProfile({
       },
       items={
         {spell={774},label="Rejuvenation",target="help",note="hot · click"},
-        {spell={22842},label="Frenzied Regeneration",note="bear heal · click"},
+        {spell={22842},label="Frenzied Regeneration",form="bear",note="bear heal · click"},
       }},
     {tag="T",title="Forms · wheel",caption="FORMS",
       bar={slot=3,key="WheelUp",bindKey="MOUSEWHEELUP",spell={5487},label="Bear Form",allBars=true},
@@ -105,7 +105,7 @@ SuperBinds.RegisterProfile({
         moonkin={slot=7,key="C",spell={22812},label="Barkskin"},
       },
       items={
-        {spell={22812},label="Barkskin",note="wall · click"},
+        {spell={22812},label="Barkskin",form="bear",note="wall · click"},
         {spell={61336},label="Survival Instincts",note="big wall · click"},
       }},
     {tag="R",title="Empower · R",caption="EMPOWER",

@@ -1,6 +1,30 @@
 # Super Binds
 
-Class-agnostic Midnight action console. **One bar, one set of keys, a different native action page per form.** Ported from [Shaman Binds](https://github.com/ENFP-Friend/ShamanBinds). **0.5.116** — Druid packs ship now.
+Class-agnostic Midnight action console. **One bar, one set of keys, a different native action page per form.** **0.5.117.**
+
+The engine is built for **every class**. Only a **Druid** layout ships. Shaman clips below are from a **different private addon** (Shaman Binds) that is **not** fully ported and is **not** what you get when you import Druid.
+
+## Parked — read this first
+
+I am stopping WoW. This addon was written **with AI**. I could not afford frontier models, so a lot of the Lua is the kind of thing people call AI slop. Sorry. It has **not** been tested hard. **Expect bugs**, empty faces, weird binds, and leftover experiments.
+
+If you do not want an AI-assisted addon, skip it. If you do, fork it and make it better — no permission needed.
+
+**Shaman totem timers / ultimates in the old footage are not SuperBinds.** That was a private, shaman-only prototype. SuperBinds is the class-agnostic rewrite. Druid is the one filled-in pack.
+
+## Start clean (do this)
+
+Do not copy someone else's SavedVariables. Start from stock:
+
+1. **Close WoW.** Never delete WTF while the game is running.
+2. Delete `WTF/Account/<your account>/SavedVariables/SuperBinds.lua` and `SuperBinds.lua.bak` if they exist.
+3. Install this folder as `_retail_/Interface/AddOns/SuperBinds`.
+4. Log in on a **Druid**. Disable **Shaman Binds** on that character if both are installed.
+5. `/reload`. Then either:
+   - ESC → Options → AddOns → **Super Binds** → **Start clean** → **Import Druid layout**, or
+   - Out of combat: `/superbinds clean`
+
+That wipes overlays, per-form slot memory, BIND chords, drawers, and console position, then loads the one shipped Druid pack (**Elune Prime**). `/superbinds reset` only restores pack keys and is not a full wipe.
 
 <video src="https://github.com/user-attachments/assets/c9f4c4cc-6c1d-4e72-859e-208a43a627ba" controls muted playsinline></video>
 
@@ -36,25 +60,19 @@ More stills (cat, travel, Alliance owl): [`docs/SHOTS.md`](docs/SHOTS.md).
 
 ## Install
 
-Junction this folder to `_retail_\Interface\AddOns\SuperBinds`. Do **not** replace the ShamanBinds junction. Disable **Shaman Binds** on the Druid so both addons do not own keys and slots. `/reload`, then apply out of combat.
+Junction this folder to `_retail_\Interface\AddOns\SuperBinds`. **Start clean** (above) so you are not eating leftover SavedVariables. Disable **Shaman Binds** on the Druid so both addons do not own keys and slots.
 
 Full steps: [`docs/INSTALL.md`](docs/INSTALL.md).
 
 ## Packs
 
-| Pack | Spec | Native form | Notes |
-|---|---|---|---|
-| **Elune Prime** | Guardian | bear | default (hero tree 24) |
-| Elune's Chosen | Guardian | bear | previous Elune strip |
-| Guardian | Guardian | bear | fallback |
-| Feral | Feral | cat | E is SBA in cat |
-| Balance | Balance | moonkin | starter, not an endgame APL |
+**One public import: Druid → Elune Prime** (Guardian + Elune's Chosen hero). Settings → **Import Druid layout**, or `/superbinds load Elune Prime`.
 
-`/superbinds load Elune Prime` (or `Elune's Chosen` / `Guardian` / `Feral` / `Balance`).
+Feral / Balance / Guardian / Elune's Chosen still exist in the TOC for spec-follow and `/superbinds list`. They are not extra “imports.” There is **no Shaman import**.
 
 ## Commands
 
-`/superbinds` apply · `load …` · `save` · `list` · `bind` · `options` · `keys` · `hide` / `show`. Alias `/sbinds`. Field guide: `/keymap`.
+`/superbinds` apply · `clean` wipe overlay + stock Druid · `load Elune Prime` · `save` · `list` · `bind` · `options` · `keys` · `hide` / `show`. Alias `/sbinds`. Field guide: `/keymap`.
 
 ## Docs
 

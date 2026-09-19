@@ -1,6 +1,6 @@
 # Independent profile packs
 
-The TOC loads `SuperBinds.lua`, then `Profiles/Druid/Guardian.lua`, `ElunesChosen.lua`, `Feral.lua`, `Balance.lua`. Add another profile file to the TOC after the engine and call `SuperBinds.RegisterProfile(table)` from it. No engine edit is needed. Optional `hero=` (Druid Elune’s Chosen = 24) so two packs with the same `spec` do not race.
+The TOC loads `SuperBinds.lua`, then `Profiles/Druid/Guardian.lua`, `ElunesChosen.lua`, `ElunePrime.lua`, `Feral.lua`, `Balance.lua`. Add another profile file to the TOC after the engine and call `SuperBinds.RegisterProfile(table)` from it. No engine edit is needed. Optional `hero=` (Druid Elune’s Chosen = 24) so two packs with the same `spec` do not race.
 
 **Engine = how buttons, binds, form pages, and chrome work. Profile = which abilities, keys, and labels a class uses.**
 
@@ -45,7 +45,7 @@ bars = {
 
 Same hotkey, same relative slot, different spell on each form’s absolute slot. Apply PlaceIDs every form while out of combat. The secure page driver is `[bonusbar:N]`; it updates in combat.
 
-Shapeshifts and Dash that must exist on **every** page: `bar={ slot=3, bindKey="MOUSEWHEELUP", spell={5487}, allBars=true }` (or `allBars` on a drawer item with its own `slot`). Drawer rows may set `form="cat"` so they only appear in that layout.
+Shapeshifts and Dash that must exist on **every** page: `bar={ slot=3, bindKey="MOUSEWHEELUP", spell={5487}, allBars=true }` (or `allBars` on a drawer item with its own `slot`). Drawer rows may set `form="cat"` or `form={"cat","bear"}` so they only appear in those stances. Untagged rows stay in every drawer. Combat defers the rebuild until you leave combat.
 
 Single-bar classes can still use `bar={ slot=1, key="E", ... }` with no `bars` table.
 
@@ -59,24 +59,25 @@ A drop onto a form-bar parent (slot is the truth; overlay is the log):
 2. Read the slot. Write `formPrimary` for **this** stance from what is actually there.
 3. Rebuild the console only — it must **not** PlaceID every family/form (leftover cursor cycles slots and used to paint caster page 1 while you were in cat).
 
-Spellbook drops do not use Shift. Shift-drag a drawer extra onto the parent swaps. Shift-drag a face off the console empties this form’s slot (`formPrimary[form] = { empty = true }`); apply must `ClearSlot` that overlay, not restock pack. Drop/bind identity owed: [`ISSUES.md`](ISSUES.md).
+Spellbook drops do not use Shift. Shift-drag a drawer extra onto the parent swaps. Shift-drag a face off the console empties this form’s slot (`formPrimary[form] = { empty = true }`); apply must `ClearSlot` that overlay, not restock pack. Shift-drag a pack extra off hides it this stance (`custom.hiddenForms[form]`). Drop onto `+` adds it this stance only (`custom.addedForms[form]`). Drawer `form` is the shapeshift name (`cat` / `bear` / `caster` / `travel`), not the bar owner. Ground travel and skyriding/flight share **travel** extras even though ground travel uses caster slots. Layout rebuilds when the drawer form changes, not only when the bonus page changes. Drop/bind identity owed: [`ISSUES.md`](ISSUES.md).
 
-Old parent moves into `custom.added`. Stock extras stay click-only unless they have `bindKey`.
+Old parent moves into `custom.addedForms[form]`. Stock extras stay click-only unless they have `bindKey`. Layout never paints the legacy global `custom.added` list.
 
 ## Unified bar / BIND
 
-Identity is the **slot**, not a per-form overlay key. `bindId = bar:N`. Keyboard `SetBinding` goes to `ACTIONBUTTONN`. The tab is `type="action"` with the **absolute** slot for this form. Click and hotkey both `UseAction` that slot. Labels follow `GetBindingKey` / `UPDATE_BINDINGS`.
+Identity is the **slot**, not a per-form overlay key. `bindId = bar:N`. Keyboard `SetBinding` goes to pack-default `ACTIONBUTTONN` (same keys as a fallback). Per-form column keys live in `SuperBindsDB.formBinds[form]["bar:N"]` and apply as override binds on that bonus bar (`cat` 2 on Attack does not steal bear E). Drawer extras bind their own CLICK/SPELL command. The tab is `type="action"` with the **absolute** slot for this form. Click and hotkey both `UseAction` that slot. Labels follow `formBinds` then the live ACTIONBUTTON bind.
 
 BIND (hover + key):
 
-- Keyboard column: place the **painted** ability on this form’s absolute slot, bind `ACTIONBUTTON`. Do not save the caster-bar leftover (that was Roots while cat showed Prowl).
-- Extra that already exists on another form’s bar: promote onto this form’s column.
+- Keyboard column: rebind **this form only**. Chat: `Shred cat → 2`.
+- Drawer extra: bind that extra. Do not promote onto a strip key.
 - Mouse: claimed hardware uses `ACTIONBUTTON` on that column. Shapeshift wheel chords cast the form spell so skyriding cannot replace them with Aerial Halt. Owed leftover: [`ISSUES.md`](ISSUES.md).
 
 ## Rotation / SBA
 
 - `useBlizzardSBA=false`: pack next-cast does not drive Blizzard’s assistant. A face may still be `sba=true` (Feral E in cat); paint uses `GetNextCastSpell(false)` without unwrapping secret combat ids.
 - `rotation={ caster={...}, cat={...}, bear={...}, moonkin={...}, travel={} }`.
+- Experimental next-best readout: `nba={ cat={...}, bear={...} }` — ordered union per form; engine `Known()` subtracts. Form lists may set `comboMax=5`. Loop rows may set `combo="stealth"` (first if known, usable, not on cooldown, not already stealthed), `combo="open"` (once per combat), `combo="build"` (fill to `comboMax`), or `combo="spend"` (flash only at `comboMax`; multiple spenders rotate and never fire back-to-back). Spec and theory: [`EXPERIMENTAL.md`](EXPERIMENTAL.md).
 - Rule fields: `spell={...}`, `auraMissing=true`, `dot=`, `ranged=`, `powerType=`, `minPower=`, `fallback=true`. Unknown conditions are skipped. Unknown forms never fall back to caster.
 - `neverSuggest={IDs and/or names}`: shapeshifts belong here. Manual forms stay on the wheel, never in next-cast.
 

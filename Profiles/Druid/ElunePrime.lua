@@ -51,6 +51,19 @@ SuperBinds.RegisterProfile({
     },
     travel={},
   },
+  -- Experimental next-best readout. Cat probe 2026-09-18 22:33 (Guardian in cat).
+  -- Flash loop only. AoE / CDs (Thrash, Swipe, Moonfire, Convoke) live on
+  -- the console drawers, not on this strip.
+  nba={
+    cat={
+      comboMax=5,
+      {spell={5215},label="Prowl",loop=true,combo="stealth"},
+      {spell={1822},label="Rake",loop=true,combo="open"},
+      {spell={5221},label="Shred",loop=true,combo="build"},
+      {spell={1079},label="Rip",loop=true,combo="spend"},
+      {spell={22568},label="Ferocious Bite",loop=true,combo="spend"},
+    },
+  },
   families={
     {tag="E",title="Attack · E",caption="ATTACK",
       bars={
@@ -66,8 +79,10 @@ SuperBinds.RegisterProfile({
           bindKey="ALT-E",key="Alt-E",
           covers={"Rootwalking","Rootwalking: Return"},requires="Rootwalking",
           note="Haranir · cancels form"},
-        {spell={213771,106785,213764},label="Swipe",target="harm",note="SBA · click"},
-        {spell={77758,106832},label="Thrash",target="harm",note="SBA · click"},
+        {spell={1822},label="Rake",target="harm",form="cat",note="bleed · stun from Prowl"},
+        {spell={1079},label="Rip",target="harm",form="cat",note="finisher bleed"},
+        {spell={213771,106785,213764},label="Swipe",target="harm",form={"cat","bear"},note="SBA · click"},
+        {spell={77758,106832},label="Thrash",target="harm",form={"cat","bear"},note="SBA · click"},
       }},
     {tag="Q",title="Disrupt · Q",caption="DISRUPT",
       bars={
@@ -76,7 +91,7 @@ SuperBinds.RegisterProfile({
         bear={slot=2,key="Q",spell={6795},label="Growl"},
       },
       items={
-        {spell={106839},label="Skull Bash",bindKey="SHIFT-Q",target="harm",note="interrupt"},
+        {spell={106839},label="Skull Bash",bindKey="SHIFT-Q",target="harm",form={"cat","bear"},note="interrupt"},
         {spell={132469},label="Typhoon",bindKey="CTRL-Q",note="knockback"},
         {spell={102793},label="Ursol's Vortex",bindKey="ALT-Q",target="cursor",note="pull"},
         {spell={2908},label="Soothe",bindKey="CTRL-SHIFT-Q",target="harm",note="enrage off"},
@@ -88,8 +103,8 @@ SuperBinds.RegisterProfile({
         bear={slot=8,key="M5",bindKey="BUTTON5",spell={22842},label="Frenzied Regeneration"},
       },
       items={
-        {spell={22842},label="Frenzied Regeneration",note="bear heal · click"},
-        {spell={8936},label="Regrowth",target="help",note="click"},
+        {spell={22842},label="Frenzied Regeneration",form="bear",note="bear heal · click"},
+        {spell={8936},label="Regrowth",target="help",form="bear",note="click"},
       }},
     {tag="T",title="Forms · wheel",caption="FORMS",
       bar={slot=3,key="WheelUp",bindKey="MOUSEWHEELUP",spell={5487},label="Bear Form",allBars=true},
@@ -112,7 +127,7 @@ SuperBinds.RegisterProfile({
       },
       items={
         {spell={61336},label="Survival Instincts",bindKey="SHIFT-C",note="big wall"},
-        {spell={22812},label="Barkskin",note="wall · click"},
+        {spell={22812},label="Barkskin",form="bear",note="wall · click"},
       }},
     {tag="R",title="Empower · R",caption="EMPOWER",
       bars={
@@ -123,8 +138,8 @@ SuperBinds.RegisterProfile({
       items={
         {spell={102558},label="Incarnation: Guardian of Ursoc",bindKey="SHIFT-R",note="burst"},
         {spell={319454,108291,"Heart of the Wild"},label="Heart of the Wild",bindKey="CTRL-R",note="off-spec window"},
-        {spell={400254},label="Raze",target="harm",note="SBA · click"},
-        {spell={204066},label="Lunar Beam",target="harm",note="SBA · click"},
+        {spell={400254},label="Raze",target="harm",form="bear",note="SBA · click"},
+        {spell={204066},label="Lunar Beam",target="harm",form={"caster","cat"},note="SBA · click"},
         {spell={391528,323764,"Convoke the Spirits"},label="Convoke the Spirits",note="SBA · click"},
       }},
     {tag="X",title="Travel · X",caption="TRAVEL",

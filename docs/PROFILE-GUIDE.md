@@ -1,6 +1,8 @@
 # SuperBinds profile guide (agent + probe)
 
-Use this when an agent sits between a **live `/superbinds probe` dump** and a **new or rewritten pack**. Schema fields: [`PROFILE-SCHEMA.md`](PROFILE-SCHEMA.md). Engine owed work: [`ISSUES.md`](ISSUES.md). Do not invent a kit from wiki memory or from the previous class’s family names.
+Use this when an agent sits between a **live `/superbinds probe` dump** and a **new or rewritten pack**. Schema fields: [`PROFILE-SCHEMA.md`](PROFILE-SCHEMA.md). Engine owed work: [`ISSUES.md`](ISSUES.md). Lua / form / BIND traps before editing the engine: [`NOTES.md` Agent traps](NOTES.md#agent-traps). Do not invent a kit from wiki memory or from the previous class’s family names.
+
+Cursor’s open workspace is often **ShamanBinds**. The shipping engine and packs are the sibling **SuperBinds** folder. Do not edit live Shaman Binds GUI.
 
 **Engine = chrome, slots, BIND, form pages. Profile = this character’s verbs, keys, and labels.**
 
@@ -61,7 +63,7 @@ Name jobs from **role + character**, then map spells onto those jobs:
 
 **Tags** (`E`, `Q`, `C`, …) are overlay IDs and usually match the hardware key. **Captions** are the job the player reads. A healer pack might put Heal on `E` and not have Attack at all. Elune’s Chosen is still a Guardian tank — same jobs as Guardian; Lunar Beam and Thorn Bloom are **spells inside** Empower / Thorn, not new family titles.
 
-Group drawer rows by that job. A Haranir tank puts **Thorn Bloom** and **Rootwalking** with racial / recover / a dedicated family — not on a shaman totem wheel they do not have. Cat-only spells (`form="cat"`) stay in the family that owns that verb, they do not invent a fake “Feral” tab on a Guardian.
+Group drawer rows by that job. A Haranir tank puts **Thorn Bloom** and **Rootwalking** with racial / recover / a dedicated family — not on a shaman totem wheel they do not have. Stance-only extras use `form="cat"` or `form={"cat","bear"}` inside the family that owns that verb; they do not invent a fake “Feral” tab on a Guardian. Untagged extras (Thorn, Dash, rez) stay in every stance.
 
 If the probe has no Moonkin Form, do not ship a moonkin `bars.moonkin` face as if they did.
 
@@ -110,7 +112,7 @@ Worked example (Haranir Guardian Elune, probe 2026-09-18): SBA = Lunar Beam, Man
 
 `/superbinds bind` or the BIND key: drawers in a grid, hover, press a key or scroll. Esc / BIND again to finish. Gold lip moves BIND only. `/superbinds keys` reserved chords. `/keymap` field guide.
 
-Spellbook drop on a parent is `PlaceAction` on **this form’s** slot (no Shift). Shift-drag extras; Shift-drag a face off the bar empties that form’s slot.
+Spellbook drop on a parent is `PlaceAction` on **this form’s** slot (no Shift). Shift-drag extras; Shift-drag a face off the bar empties that form’s slot. Add / hide / reorder extras are **this stance only** (`addedForms` / `hiddenForms` / `orderForms` on `DrawerForm` — travel extras are not caster’s). BIND a strip column writes `formBinds` for this form (`Shred cat → 2`); BIND a drawer extra does not steal that column’s `ACTIONBUTTON`.
 
 ---
 

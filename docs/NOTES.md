@@ -1,8 +1,10 @@
 # SuperBinds notes
 
-Snapshot: **0.5.83** (18 Sep 2026). `/superbinds probe` copy window is spellbook plus live keys/slots. **Elune Prime** is the default Guardian + Elune tree 24 pack (Thorn/Rootwalking on Attack, SBA on bear E, World click-only). Elune's Chosen remains the previous Elune strip. Skyriding flight form keeps the console (E / Q / 1 / 2 / C plus Forms wheel). Shipping addon is this folder, junctioned to `_retail_\Interface\AddOns\SuperBinds`. Live **Shaman Binds** stays a separate addon — do not edit its GUI or junction. **DruidAssistant** is an unused sidecar; BIND, bars, and endcaps do not live there.
+Snapshot: **0.5.117** (19 Sep 2026). Parked. One public Druid import (**Elune Prime**). `/superbinds clean` wipes overlays. Engine is class-agnostic; Shaman is a separate private addon, not imported here. `/superbinds probe` copy window is spellbook plus live keys/slots. Skyriding flight form keeps the console (E / Q / 1 / 2 / C plus Forms wheel). Shipping addon is this folder, junctioned to `_retail_\Interface\AddOns\SuperBinds`. Live **Shaman Binds** stays a separate addon — do not edit its GUI or junction. **DruidAssistant** is an unused sidecar; BIND, bars, and endcaps do not live there.
 
-Product overview: [`../README.md`](../README.md). **Probe → pack:** [`PROFILE-GUIDE.md`](PROFILE-GUIDE.md). Schema: [`PROFILE-SCHEMA.md`](PROFILE-SCHEMA.md). Art: [`ART.md`](ART.md). Shots: [`SHOTS.md`](SHOTS.md). **Known errors + owed rework:** [`ISSUES.md`](ISSUES.md).
+Cursor’s open workspace is often **ShamanBinds**. Edit the sibling **SuperBinds** folder. Do not commit or push unless asked.
+
+Product overview: [`../README.md`](../README.md). **Probe → pack:** [`PROFILE-GUIDE.md`](PROFILE-GUIDE.md). Schema: [`PROFILE-SCHEMA.md`](PROFILE-SCHEMA.md). Art: [`ART.md`](ART.md). Shots: [`SHOTS.md`](SHOTS.md). **Known errors + owed rework:** [`ISSUES.md`](ISSUES.md). NBA readout: [`EXPERIMENTAL.md`](EXPERIMENTAL.md). **Read [Agent traps](#agent-traps) before growing `SuperBinds.lua`.**
 
 ## Product split
 
@@ -57,11 +59,56 @@ Bible: [`ART.md`](ART.md). `P.FormEndcap()` uses the shapeshift name, not `BarOw
 
 Live: bear `batC`, cat v6 **B**, travel C, Horde wyvern v4 B. Alliance owl leftover. Moonkin not started. `leftIn` 26 for form busts.
 
+## Agent traps
+
+These are the bugs a cold read of the file will recreate. Schema fields: [`PROFILE-SCHEMA.md`](PROFILE-SCHEMA.md).
+
+### Lua 5.1 (load-time, not runtime)
+
+- **200 locals per file.** Helpers live on `P` (or nested `do`). The file is already near the cap.
+- **60 upvalues per function prototype.** `BuildEverything` hit this in 0.5.97 (`function at line N has more than 60 upvalues` — the reported line is often near the *end* of the function). Helpers it calls are stashed on `P._L` and invoked as `L.Name` after `local L = P._L`. Do not add a new file-level `local function` and close over it from `BuildEverything`. Nested closures inside it share that budget for what they capture. Tables already upvalued there (`KEEP`, `PLACED_SPELLS`, `BOOK`, `BAR_BINDS`, `console`, …) can stay; new *functions* must not.
+- `P.Number(x)` is a **type check** (returns boolean). Numeric pack fields (`comboMax`) use `P.PublicNumber`. Using `P.Number` in `cp >= need` crashed NBA (`compare boolean with number`).
+
+### Three “forms” (they are not the same)
+
+| Helper | Meaning |
+| --- | --- |
+| `PackFormNow` / `BarOwner` | Which **action page** to PlaceID. Ground travel `use="caster"` → **caster slots**. |
+| `DrawerForm` | Which **extras list**. Ground travel and skyriding/flight are **`travel`**, not caster. |
+| `CurrentForm` / `FormEndcap` | Animal art. |
+
+Layout rebuilds when the **bar form or the drawer form** changes. A skip that only compares `PackFormNow` misses caster → ground travel (same slots, different drawers). Do not `PlaceID` bear onto skyriding Surge.
+
+### Drawers are per stance (0.5.94+)
+
+Player overlay is `custom.addedForms[form]`, `custom.hiddenForms[form]`, `custom.orderForms[form]`. **Never paint or write** the legacy global `custom.added` / `custom.hidden` — that leaked cat add/remove onto bear and caster.
+
+- Pack stock rows may still set `form="cat"` or `form={"cat","bear"}`. Untagged stock stays in every stance. `P.ItemFormOk` treats travel / flight / skyriding as one extras identity.
+- Shift-drag a pack extra off the bar → `HideExtra` **this** `DrawerForm` (`hiddenForms`). Drop on `+` → `AddExtra` this form only. Displace / swap hides here, never writes the old global `custom.hidden[key]`.
+- `MigrateAddedPerForm` may copy leftover globals onto the current drawer form, then clear them.
+
+### Column keys are per stance (0.5.96+)
+
+`SuperBindsDB.formBinds[form]["bar:N"]` applies as SecureHandler override binds on that bonus bar. Pack `barBinds` stays the character `ACTIONBUTTON` default. Cat Attack **2** must not steal bear **E**.
+
+- BIND a **strip** `bar:N`: write `formBinds[PackFormNow]`, restore pack-default `ACTIONBUTTON`. Chat: `Shred cat → 2`.
+- BIND a **drawer extra**: bind that extra’s CLICK/SPELL. Do **not** promote it onto a strip key (pressing 2 then fires the column, not the drawer).
+- Labels: `EffectiveKey` / `RefreshBindLabels` / `FormBindFor`. Test `bindId` with `match("^bar:")`. `find("^bar:", 1, true)` is a **plain** search for the literal characters `^bar:` and never applies `formBinds` (0.5.97: keys fired, labels stayed E).
+- `RebindAll` and `UPDATE_BINDINGS` must **not** copy live `GetBindingKey(ACTIONBUTTON)` into global `barBinds`.
+
+### SBA / NBA / BIND maze
+
+Do not grow `CommitCursorToTab` / `PickupAssisted` / `PickupSpell(1229376)`. Shimmer is paint-only. NBA is a **flash loop**, not every off-form button — see [`EXPERIMENTAL.md`](EXPERIMENTAL.md). Recover and World are the click-only exceptions; every other non-SBA active needs a `bindKey`. Shapeshifts are never next-cast.
+
+**Off-role vs native form (spec role, not a class string):** `pack.nativeForm` is the primary talent-tree stance (Guardian / Elune Prime = `bear`, Feral = `cat`, Balance = `moonkin`). `P.PackNativeForm` reads that field; familyMode is only a fallback. NEXT BEST and the **pulse next-press key** show only when `P.NbaFormList()` is set — current `DrawerForm` has a pack `nba` list **and** is not `nativeForm`. Do **not** `if form == "bear"` and do **not** paint the pulse key from SBA / `GetNextCastSpell` on the native form (that is why the hotkey leaked onto the GCD ring in bear). Live character is Guardian, so cat is the off-role cheat-sheet; caster and travel have no `nba` list yet, so they stay blank too.
+
+**Later (Feral / converse):** when the primary role is cat, the same gate already hides the title in cat. A bear cheat-sheet is `pack.nba.bear` (and any other off-role lists), not a Guardian special case. Do not invert with a hardcoded “always cat.” Caster / travel NBA is still optional.
+
 ## BIND / bars (engine)
 
 Unified bar: hotkey label, ability, and native slot stay one object. Keyboard faces are `ACTIONBUTTON` 1–12.
 
-BIND (0.5.83):
+BIND (0.5.83–0.5.97):
 
 - Rebinding a strip face does **not** PlaceAction the same spell onto its slot (WoW toggles it off → empty Q).
 - BIND a drawer extra to a key that belongs to a strip face **swaps**: extra → face, face → that drawer (old extra chord follows the displaced face).
@@ -85,12 +132,19 @@ Assisted Combat on a bar is type `spell` / subtype `assistedcombat` (or `C_Actio
 
 ## Pulse
 
-Combat-only GCD bezel matching the walnut/gold trim. Native `CooldownFrameTemplate`, circular edge, traveling pip inside a thin ring (`SetEdgeScale` 0.72 — do not raise above ~1 or the pip leaves the 64px widget). Soft ADD ring glow (not a filled disc). 20% opacity slider = shipped look; large ring reads ~34% opaque (15% more transparent than 0.5.64). ESC → Options → AddOns → Super Binds (or `/superbinds options`) previews it out of combat; the slider writes glow + bezel live.
+Combat-only GCD bezel matching the walnut/gold trim. Visible spinner is a `PulseEdge` pip via `SetRotation` at a constant °/s — **not** the hoop’s `CooldownFrameTemplate` (that widget `SetCooldown`s from 12 and teleports on a hit). Hidden 1px cooldown still watches the real GCD. Soft ADD ring glow (not a filled disc). 20% opacity slider = shipped look.
+
+**Hit window:** the pip spins at a **constant** clockwise rate (`76° / PulseWindow()`, so crossing the gold slice is the press window). Do not `SetCooldown` on the visible hoop — that teleports the pip back to 12 on a hit. Hidden watcher still times the real GCD. On a hit, **rotate `PulseHitZone`** to where the pip will be when this GCD ends; tween the slice, do not reset `_sbSpinAng`. Window phase is the same spin, now through the slice. **Miss:** do not `PulseSettle("idle")`. Unlock the slice (`_sbZoneLock=false`) and let it **chase** one guessed GCD ahead of the pip; the next real press locks it again with the same tween. Never hide the pip during the window. Do not add a second HUD.
+
+ESC → Options → AddOns → Super Binds → **GCD pulse** (or `/superbinds options`) previews it out of combat.
+
+**Pulse next-press key** (experimental, default on): the hotkey for the NBA flash (E, 1, R…) sits above the ring. Same off-role gate as NEXT BEST (`NbaFormList` / `nativeForm`). Hidden in the spec’s native form. See [Agent traps](#agent-traps).
 
 ## Hard constraints
 
 - Lua 200 locals per file (`P` table, nested `do`).
-- Midnight secrets: no comparing secret numbers.
+- Lua 5.1 **60 upvalues** per function (`BuildEverything` → `P._L`; see [Agent traps](#agent-traps)).
+- Midnight secrets: no comparing secret numbers. `P.Number` is a boolean type-check; use `P.PublicNumber` for actual numbers.
 - No `SetActionUIButton`.
 - Do not write WTF / `bindings-cache.wtf` while WoW is running.
 - Unmodified wheel is camera unless BIND or the pack claimed it.
@@ -102,6 +156,7 @@ Art only here. Engine owed work: [`ISSUES.md`](ISSUES.md).
 
 1. Moonkin (Haranir batbear) endcap.
 2. Alliance owl replacement (same relic process as Horde wyvern).
+3. Feral converse NBA: `nativeForm=cat` already hides the pulse key / NEXT BEST in cat. A bear (or caster) cheat-sheet is `pack.nba.bear`, not a hardcoded invert.
 
 ## Commands
 
