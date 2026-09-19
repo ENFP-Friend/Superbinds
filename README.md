@@ -2,6 +2,14 @@
 
 Class-agnostic Midnight action console. **One bar, one set of keys, a different native action page per form.** Ported from [Shaman Binds](https://github.com/ENFP-Friend/ShamanBinds). **0.5.116** — Druid packs ship now.
 
+<video src="https://github.com/user-attachments/assets/c9f4c4cc-6c1d-4e72-859e-208a43a627ba" controls muted playsinline></video>
+
+**Adding and moving spells** — BIND, drawers, and dropping abilities onto faces. Each form keeps its own slot memory (unshifted vs cat, bear, travel, and so on).
+
+<video src="https://github.com/user-attachments/assets/094719ad-63a4-406e-a269-537c0861d8ae" controls muted playsinline></video>
+
+**Moonkin / bat form** — same keys, moonkin page and endcap.
+
 <video src="https://github.com/user-attachments/assets/b01152df-cb3e-40d1-8ae5-09792e1d6304" controls muted playsinline></video>
 
 **0.5.116** — Haranir Druid: every form bar, hotkey helper, GCD attack helper, and the cat attack helper. Blizzard’s assisted rotation omits bleeds, so they do not stack from that helper.

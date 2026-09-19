@@ -1,10 +1,18 @@
 # Screenshots
 
-In-game captures under `docs/shots/`. PNG stills plus two silent MP4 demos (under 10 MB, no audio, GitHub-ready). These are the **Druid packs** on SuperBinds (Guardian / Feral / Balance) — not the Shaman Binds addon, except the origin WIP clip called out below. Same ten family tabs and keys every stance; endcaps and tab faces follow Haranir form.
+In-game captures under `docs/shots/`. PNG stills plus silent MP4 demos (under 10 MB, no audio, GitHub-ready). These are the **Druid packs** on SuperBinds (Guardian / Feral / Balance) — not the Shaman Binds addon, except the origin WIP clip called out below. Same ten family tabs and keys every stance; endcaps and tab faces follow Haranir form.
 
 Product: [`../README.md`](../README.md). Endcap files: [`ART.md`](ART.md).
 
 ## Demo
+
+**Adding and moving spells** — BIND, drawers, dropping abilities onto faces. Each form keeps its own slot memory (unshifted vs cat, bear, travel, and so on).
+
+<video src="https://github.com/user-attachments/assets/c9f4c4cc-6c1d-4e72-859e-208a43a627ba" controls muted playsinline></video>
+
+**Moonkin / bat form** — same keys, moonkin page and endcap.
+
+<video src="https://github.com/user-attachments/assets/094719ad-63a4-406e-a269-537c0861d8ae" controls muted playsinline></video>
 
 **SuperBinds 0.5.116** — Druid so far: form bars, hotkey helper, GCD attack helper, cat attack helper. Blizzard’s assisted rotation omits bleeds, so they do not stack from that helper.
 
