@@ -76,7 +76,7 @@ Skyriding / druid flight form is still Travel Form (`bonus=5`, abs ~121–132). 
 
 | Status | What | Evidence / notes |
 |---|---|---|
-| Open (pack) | Rebirth missing from painted Recover | Book and pack stock list it; 17:35 paint still skips it (`Known` / drawer filter). |
+| Open (pack) | Rebirth missing from painted Recover | 0.5.79 paint skipped it. 0.5.118 keeps explicit pack rows and records Assisted Combat book lines. Not re-probed. |
 | Confirm | Drop SBA on bear E with no Shift → stays on **97**, caster 1 unchanged | Overlay already there from an earlier drop. Not a fresh drop this dump. |
 | Expected | Bear E = Assisted Rotation overlay | Player dropped SBA. Pack stock is Mangle. |
 | Constraint | Pulse `SetEdgeScale` | Stay **&lt; 1** (shipped 0.72). |

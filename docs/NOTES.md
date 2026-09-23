@@ -1,6 +1,13 @@
 # SuperBinds notes
 
-Snapshot: **0.5.117** (19 Sep 2026). Parked. One public Druid import (**Elune Prime**). `/superbinds clean` wipes overlays. Engine is class-agnostic; Shaman is a separate private addon, not imported here. `/superbinds probe` copy window is spellbook plus live keys/slots. Skyriding flight form keeps the console (E / Q / 1 / 2 / C plus Forms wheel). Shipping addon is this folder, junctioned to `_retail_\Interface\AddOns\SuperBinds`. Live **Shaman Binds** stays a separate addon — do not edit its GUI or junction. **DruidAssistant** is an unused sidecar; BIND, bars, and endcaps do not live there.
+Snapshot: **0.5.121** (23 Sep 2026). Parked. One public Druid import (**Elune Prime**). `/superbinds clean` wipes overlays. A `/superbinds load` stays until you change spec (`profilePinned`). Engine is class-agnostic; Shaman is a separate private addon, not imported here. `/superbinds probe` copy window is spellbook plus live keys/slots. Skyriding flight form keeps the console (E / Q / 1 / 2 / C plus Forms wheel). Shipping addon is this folder, junctioned to `_retail_\Interface\AddOns\SuperBinds`. Live **Shaman Binds** stays a separate addon — do not edit its GUI or junction. **DruidAssistant** is an unused sidecar; BIND, bars, and endcaps do not live there.
+
+Public patch notes: [`../README.md`](../README.md#since-05117).
+
+- **0.5.118** — SBA glow only with a real next cast. Explicit pack rows are not dropped as rotation leftovers. Import Druid does not load a saved profile of the same name. `match("^bar:")` for bar ids (already required; both checks).
+- **0.5.119** — Manual load / Import / Start clean set `profilePinned`. Spec change clears it. Elune Prime: Rake `1`, Rip `4`, bear Regrowth `SHIFT-BUTTON5`, bear Barkskin `CTRL-C`, Remove Corruption `ALT-BUTTON5` on Heal (not Recover). Mouse chords are in `pack.hardware`. Do not bind Rip to `2` (trinket, and Skyward Ascent while mounted).
+- **0.5.120** — `/keymap` filter: bindings, all spells, not used. Form option defaults to the form you are in.
+- **0.5.121** — Spell groups: `IsSpellCrowdControl`, `IsExternalDefensive`, `IsSelfBuff`, else the spellbook skill line. Do not vendor a class/race spell database.
 
 Cursor’s open workspace is often **ShamanBinds**. Edit the sibling **SuperBinds** folder. Do not commit or push unless asked.
 
@@ -39,7 +46,7 @@ Keyboard combat faces follow the stance page. Forms wheel casts the shapeshift s
 
 `SuperBinds.toc` loads Guardian, Elune's Chosen, Elune Prime, Feral, then Balance.
 
-- **Elune Prime** (`spec=104`, `hero=24`, `nativeForm=bear`, default) — probe binding map: Thorn/Rootwalking on Attack, SBA on bear E, World click-only. Loads when the Elune hero tree is active.
+- **Elune Prime** (`spec=104`, `hero=24`, `nativeForm=bear`, default) — probe binding map: Thorn/Rootwalking on Attack, SBA on bear E, World click-only. Cat Rake **1**, Rip **4**. Bear Regrowth **Shift-M5**, Barkskin **Ctrl-C**. Remove Corruption **Alt-M5** (Heal). Loads when the Elune hero tree is active, and a manual load stays until spec change.
 - **Elune's Chosen** (`spec=104`, `hero=24`, `nativeForm=bear`) — previous Elune strip (Thorn on Shift-wheel-up). `/superbinds load Elune's Chosen`.
 - **Guardian** (`spec=104`, no `hero`, `nativeForm=bear`) — previous bear kit. Fallback when Elune is not the hero tree. `/superbinds load Guardian`.
 - **Feral** (`spec=103`, `nativeForm=cat`) — auto-follows Feral spec. E is SBA in cat.

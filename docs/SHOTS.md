@@ -24,7 +24,7 @@ Product: [`../README.md`](../README.md). Endcap files: [`ART.md`](ART.md).
 
 ![Field guide — every ability and its key](shots/06-field-guide.png)
 
-**Field guide** (`/keymap`) — a quick look at every spell and binding.
+**Field guide** (`/keymap`) — bindings, or every spell. **0.5.120** adds Not used and this-form. **0.5.121** groups crowd control, defensives, and self buffs with Blizzard’s tags.
 
 ![Hotkey menu — BIND drawers per family](shots/07-hotkey-menu.jpg)
 

@@ -21,7 +21,7 @@ What works:
 3. **Not lookahead.** We cannot read “is Rip on the target?” or real combo points. The strip is the ordered kit. At most **one** icon flashes “now.”
 4. **Native form:** no `nba` list. E is SBA; flash is Blizzard `GetNextCastSpell(false)` on the console. Hide the experimental readout there.
 5. **Off-form flash is a cast stepper**, not SBA and not `SpellReady` on the CP loop. Combat secrets made “is Rip up?” illegal. The old pack fallback stuck on **Shred (E)** after Rake. Finishers **need combo points** (Rip and Bite both fail at 0). We cannot read the five dots, so the stepper **counts its own successful builders** up to `comboMax`.
-6. **Readout, not a second action bar.** The console stays jobs + keys + native slots (`ACTIONBUTTON` 1–12). The experiment is a movable strip. You still press Q / 1 / E / 2 / R. Do not `PlaceAction` extra slots. Do not `SetActionUIButton`. Click-to-cast on the readout is optional and must not get its own binds.
+6. **Readout, not a second action bar.** The console stays jobs + keys + native slots (`ACTIONBUTTON` 1–12). The experiment is a movable strip. You still press Q / 1 / E / 4 / R. Do not `PlaceAction` extra slots. Do not `SetActionUIButton`. Click-to-cast on the readout is optional and must not get its own binds.
 
 Travel/skyriding may not need a readout; those verbs are already on the main bar.
 
@@ -109,15 +109,15 @@ Advance:
 
 You still press the **console** keys. The readout flashes which of those to press. With **Pulse next-press key** on (default), that hotkey sits centered **above the GCD pulse** in **off-role** only (`NbaFormList`: current form has `pack.nba` and is not `nativeForm`). Native form (Guardian bear) has no title.
 
-**Pull (Guardian cat, 5 combo slots):**
+**Pull (Elune Prime, Guardian cat, 5 combo slots — keys as of 0.5.119):**
 
 1. **Q Prowl** — if known, not on cooldown, not already stealthed, and usable. Combat or CD → skip.
-2. **1 Rake** — bleed + 1 estimated CP. From Prowl this is the **stun**.
+2. **1 Rake** — bleed + 1 estimated CP. From Prowl this is the **stun**. **1** is Rake on the ground. While skyriding, **1** is Aerial Halt.
 3. **E Shred** — mash until the estimate hits 5 (Rake was 1, then four Shreds).
-4. **2 Rip** — long bleed; **spends** the five points. Will not flash at 0 CP.
+4. **4 Rip** — long bleed; **spends** the five points. Will not flash at 0 CP. **2** stays the first trinket, and Skyward Ascent while flying.
 5. **E Shred** — build five again.
 6. **R Ferocious Bite** — dump; **spends** the five points. Will not flash at 0 CP.
-7. Repeat **E → 2 Rip → E → R Bite**. After a spend the flash goes back to Shred, not the other finisher and not Rake.
+7. Repeat **E → 4 Rip → E → R Bite**. After a spend the flash goes back to Shred, not the other finisher and not Rake.
 
 Leave combat: next pull can Prowl again; first dump is Rip again.
 
@@ -148,7 +148,7 @@ Probe kit used to author the **loop**: Prowl, Rake, Shred, Rip, Ferocious Bite. 
 | 1 | Prowl | Q | first, if usable | stealth |
 | 2 | Rake | 1 | open (stun from stealth) | open |
 | 3 | Shred | E | fill until 5 CP | build |
-| 4 | Rip | 2 | first 5-CP spend, then alternates with Bite | spend |
+| 4 | Rip | 4 | first 5-CP spend, then alternates with Bite | spend |
 | 5 | Ferocious Bite | R | after Rip, at 5 CP | spend |
 
 ---

@@ -1,6 +1,6 @@
 # Super Binds
 
-Class-agnostic Midnight action console. **One bar, one set of keys, a different native action page per form.** **0.5.117.**
+Class-agnostic Midnight action console. **One bar, one set of keys, a different native action page per form.** **0.5.121.**
 
 The engine is built for **every class**. Only a **Druid** layout ships. Shaman clips below are from a **different private addon** (Shaman Binds) that is **not** fully ported and is **not** what you get when you import Druid.
 
@@ -44,7 +44,7 @@ That wipes overlays, per-form slot memory, BIND chords, drawers, and console pos
 
 ![Field guide — every ability and its key](docs/shots/06-field-guide.png)
 
-**Field guide** (`/keymap`) — a quick look at every spell and binding.
+**Field guide** (`/keymap`) — bindings on the bar, or every spellbook spell. **Not used** hides spells already placed. **This form** is the default, so a cat-only spell does not show as unused while you are in bear. Crowd control, defensives, and self buffs use Blizzard’s tags. Everything else stays on its spellbook tab.
 
 ![Hotkey menu — BIND drawers per family](docs/shots/07-hotkey-menu.jpg)
 
@@ -66,13 +66,23 @@ Full steps: [`docs/INSTALL.md`](docs/INSTALL.md).
 
 ## Packs
 
-**One public import: Druid → Elune Prime** (Guardian + Elune's Chosen hero). Settings → **Import Druid layout**, or `/superbinds load Elune Prime`.
+**One public import: Druid → Elune Prime** (Guardian + Elune's Chosen hero). Settings → **Import Druid layout** applies the shipped file. `/superbinds load Elune Prime` sticks until you change spec. If a saved profile uses that same name, **load** uses the save and **Import** does not.
 
 Feral / Balance / Guardian / Elune's Chosen still exist in the TOC for spec-follow and `/superbinds list`. They are not extra “imports.” There is **no Shaman import**.
 
 ## Commands
 
 `/superbinds` apply · `clean` wipe overlay + stock Druid · `load Elune Prime` · `save` · `list` · `bind` · `options` · `keys` · `hide` / `show`. Alias `/sbinds`. Field guide: `/keymap`.
+
+## Since 0.5.117
+
+**0.5.118.** Assisted Combat glow only while it has a next cast. Explicit pack rows stay even when the rotation list names them. Import Druid applies shipped Elune Prime, not a saved profile of the same name.
+
+**0.5.119.** A pack you load stays loaded until you change spec. Elune Prime keys that were click-only: Rake **1**, Rip **4** (2 and 3 stay trinkets; skyriding still takes 1 and 2 while mounted), bear Regrowth **Shift-M5**, bear Barkskin **Ctrl-C**, Remove Corruption **Alt-M5** on Heal. Recover stays click-only: Rebirth, Revive, Moonglade, Hearthstone.
+
+**0.5.120.** Field guide filter: Bindings, All spells, Not used, and this form or every form.
+
+**0.5.121.** All spells and Not used pull Crowd control, Defensive, and Self buff from Blizzard’s flags. No hand-kept class or race list. Other races’ spells never appear, because the list is this character’s spellbook.
 
 ## Docs
 

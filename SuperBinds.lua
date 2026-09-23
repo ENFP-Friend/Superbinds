@@ -1,4 +1,4 @@
--- Super Binds 0.5.117 — class-agnostic port of the Shaman Binds 8.34 engine.
+-- Super Binds 0.5.121 — class-agnostic port of the Shaman Binds 8.34 engine.
 -- Packs live in Profiles/. Engine: native ACTIONBUTTON faces, BIND, drawers, shimmer.
 SuperBindsDB = type(SuperBindsDB) == "table" and SuperBindsDB or {}
 
@@ -145,13 +145,12 @@ function P.PackForPlayerSpec()
   end
 end
 function P.CurrentPack()
-  local specPack = P.PackForPlayerSpec and select(1, P.PackForPlayerSpec())
+  -- A loaded profile stays, including another pack of this class.
+  -- Spec follow is FollowSpecPack, and it stays off while profilePinned is set.
   local name = SuperBindsDB and SuperBindsDB.activeProfile
   local t = name and P.FindPack(name)
-  if specPack and t and t ~= specPack and t.class and specPack.class and t.class == specPack.class then
-    return specPack
-  end
   if t and P.PackMatches(t) then return t end
+  local specPack = P.PackForPlayerSpec and select(1, P.PackForPlayerSpec())
   return specPack or P.DefaultPack()
 end
 function P.BarPages()
@@ -1427,9 +1426,13 @@ local function ScanBook()
           local it = P.BookInfo(j, Enum.SpellBookSpellBank.Player)
           if it and it.spellID and not it.isPassive and not it.isOffSpec then
             local spellType = Enum.SpellBookItemType
-            if spellType and it.itemType and it.itemType ~= spellType.Spell then
-              -- Flyouts, pets, and unlearned nodes are not family faces.
-            else
+            local kind = it.itemType
+            local skip = spellType and kind and (
+              kind == spellType.Flyout or kind == spellType.FutureSpell or kind == spellType.Pet
+            )
+            -- Assisted Combat rows are still castable spells. Flyouts are not
+            -- one spell; feeding those names into GetSpellInfo aborts layout.
+            if not skip then
               local nm = it.name or SpellName(it.spellID)
               if nm and nm ~= "" and nm ~= tostring(it.spellID) and not BOOK[nm] then
                 BOOK[nm] = it.spellID
@@ -1489,9 +1492,21 @@ function Known(...)
         local info = spellInfo(want)
         nm = info and P.Text(info.name)
       end
-      if nm and (P.PlayerKnows(want) or BOOK[nm]) then return nm, want end
+      if nm and (P.PlayerKnows(want) or BOOK[nm]) then
+        return nm, BOOK[nm] or want
+      end
     elseif type(want) == "string" and want ~= "" and BOOK[want] then
       return want, BOOK[want]
+    end
+  end
+  local function bookExact(want)
+    if type(want) ~= "string" or want == "" then return nil end
+    if BOOK[want] then return want, BOOK[want] end
+    local lower = want:lower()
+    for bookName, id in pairs(BOOK) do
+      if type(bookName) == "string" and bookName:lower() == lower then
+        return bookName, id
+      end
     end
   end
   for i = 1, select("#", ...) do
@@ -1499,21 +1514,16 @@ function Known(...)
     if type(name) == "string" and name ~= "" then
       local id = P.SPELL_ID[name]
       if id and P.PlayerKnows(id) then return name, id end
+      local bn, bid = bookExact(name)
+      if bn then return bn, bid end
     end
     local info = spellInfo(name)
     if info then
       local id2 = P.ID(info.spellID)
       local nm = P.Text(info.name) or (type(name) == "string" and name) or nil
-      if id2 and nm and P.PlayerKnows(id2) then return nm, id2 end
-    end
-  end
-  for i = 1, select("#", ...) do
-    local want = select(i, ...)
-    if type(want) == "string" and want ~= "" then
-      for bookName, id in pairs(BOOK) do
-        if type(bookName) == "string" and bookName:find(want, 1, true) then
-          return bookName, id
-        end
+      if id2 and nm and (P.PlayerKnows(id2) or bookExact(nm)) then
+        local _, bid = bookExact(nm)
+        return nm, bid or id2
       end
     end
   end
@@ -2749,6 +2759,7 @@ function P.EnsureDB()
     if not P.ID(slot) or not P.Text(name) then db.hiddenSlots[slot] = nil end
   end
   if not P.Text(db.activeProfile) then db.activeProfile = nil end
+  db.profilePinned = db.profilePinned == true
   if type(db.totemPos) ~= "table" then db.totemPos = {} end
   for i, pos in pairs(db.totemPos) do
     if type(pos) ~= "table" or not P.Number(pos.x) or not P.Number(pos.y) then db.totemPos[i] = nil end
@@ -3121,11 +3132,11 @@ local function KeyOwnedByBar(key, bindId)
   local fb = form and SuperBindsDB.formBinds and SuperBindsDB.formBinds[form]
   if type(fb) == "table" then
     for id, k in pairs(fb) do
-      if k == key and id ~= bindId and tostring(id):find("^bar:", 1, true) then return true end
+      if k == key and id ~= bindId and tostring(id):match("^bar:") then return true end
     end
   end
   for id, k in pairs(SuperBindsDB.binds or {}) do
-    if k == key and id ~= bindId and tostring(id):find("^bar:") then return true end
+    if k == key and id ~= bindId and tostring(id):match("^bar:") then return true end
   end
   for _, action in pairs(BAR_BINDS) do
     if type(action) == "string" and action:find("ACTIONBUTTON", 1, true) then
@@ -4667,15 +4678,38 @@ local function BuildFamilies()
 end
 
 function P.ClearFamilyKeys()
-  -- Clear only commands belonging to our helpers, leaving unrelated bindings alone.
+  -- Clear this addon's chords, including SPELL binds it saved. Leave camera
+  -- and any key the addon does not own.
   local families=BuildFamilies()
   local keys={}
-  for key in pairs(BAR_BINDS) do keys[key]=true end
-  for _,family in ipairs(families) do for _,it in ipairs(family.items) do if it.bindKey then keys[it.bindKey]=true end end end
-  for _,key in pairs(SuperBindsDB.binds or {}) do if key~="" then keys[key]=true end end
+  local function add(key)
+    if type(key)=="string" and key~="" then keys[key]=true end
+  end
+  for key in pairs(BAR_BINDS) do add(key) end
+  for _,family in ipairs(families) do
+    for _,it in ipairs(family.items) do add(it.bindKey) end
+  end
+  for _,key in pairs(SuperBindsDB.binds or {}) do add(key) end
+  for _,key in pairs(SuperBindsDB.barBinds or {}) do add(key) end
+  for _,map in pairs(SuperBindsDB.formBinds or {}) do
+    if type(map)=="table" then for _,key in pairs(map) do add(key) end end
+  end
+  if GetNumBindings then
+    for i=1,GetNumBindings() do
+      local command, _, key1, key2 = GetBinding(i)
+      if type(command)=="string" and (command:find("^CLICK SuperBinds",1,true) or command:find("^MACRO SB_",1,true)) then
+        add(key1)
+        add(key2)
+      end
+    end
+  end
+  local function ours(cmd)
+    if type(cmd)~="string" then return false end
+    return cmd:find("^CLICK SuperBinds",1,true) or cmd:find("^MACRO SB_",1,true)
+      or cmd:find("^SPELL ",1,true) or cmd:find("^ITEM ",1,true) or cmd:find("^MACRO ",1,true)
+  end
   for key in pairs(keys) do
-    local cmd=GetBindingAction(key)
-    if type(cmd)=="string" and (cmd:find("^CLICK SuperBinds") or cmd:find("^MACRO SB_")) then SetBinding(key) end
+    if ours(GetBindingAction(key)) then SetBinding(key) end
   end
   P.RestoreChatKeys()
 end
@@ -6256,30 +6290,19 @@ function P.AssistedHighlightActive()
 end
 
 function P.ReadNextCastSpell()
-  -- Off-form NBA readout owns the flash. Do not paint Shred/SBA on E.
+  -- Off-form NBA readout owns that flash. Do not also invent a console suggestion.
   if P.NbaEnabled and P.NbaEnabled() and P.NbaFormList and P.NbaFormList() then
     return nil
   end
-  local pack = P.CurrentPack and P.CurrentPack()
-  local faceSBA = false
-  for _, tab in pairs(consoleTabs or {}) do
-    if tab and tab.IsShown and tab:IsShown() and tab._ability and P.IsAssistedAbility(tab._ability) then
-      faceSBA = true
-      break
-    end
-  end
-  if pack and pack.useBlizzardSBA == false and not faceSBA then
-    local id
-    pcall(function() id = P.ProfileNextCast and P.ProfileNextCast() end)
-    return P.ID(P.PublicNumber(id))
-  end
-  if not faceSBA and not P.AssistedHighlightActive() then return nil end
+  -- Blizzard's next cast only. A pack rotation that reads auras or energy
+  -- fails closed under Midnight secrets and then sticks on its fallback.
   local id
   pcall(function()
     if C_AssistedCombat and C_AssistedCombat.GetNextCastSpell then
       id = C_AssistedCombat.GetNextCastSpell(false)
     end
   end)
+  if issecretvalue and issecretvalue(id) then return id end
   return P.ID(P.PublicNumber(id))
 end
 
@@ -6307,9 +6330,10 @@ function P.IconIsAssistedSBA(frame)
 end
 
 function P.IconMatchesNextCast(frame, nextID)
-  if not frame or not nextID then return false end
-  if not frame:IsShown() then return false end
-  if P.IconIsAssistedSBA(frame) then return true end
+  if not frame or not frame:IsShown() then return false end
+  if issecretvalue and issecretvalue(nextID) then return false end
+  if not nextID then return false end
+  if P.IconIsAssistedSBA(frame) then return false end
   if P.SpellIDsMatch(frame.spellID, nextID) then return true end
   local ab = frame._ability
   local name, id = P.AbilitySpellIdentity(ab)
@@ -6389,11 +6413,14 @@ end
 
 function P.ApplyAssistedHighlight(frame, nextID, inCombat)
   if not frame then return end
+  local secret = issecretvalue and issecretvalue(nextID)
   local show = false
   if P.IconIsAssistedSBA(frame) then
-    show = inCombat == true
+    -- The face icon already follows GetNextCastSpell. Glow only while
+    -- Blizzard's highlight is on and there is a suggestion, not for the whole fight.
+    show = inCombat == true and P.AssistedHighlightActive() and (secret or nextID ~= nil)
   else
-    show = nextID and P.IconMatchesNextCast(frame, nextID) or false
+    show = (not secret) and nextID and P.IconMatchesNextCast(frame, nextID) or false
   end
   local hl = frame.AssistedCombatHighlightFrame
   if not show then
@@ -10169,16 +10196,72 @@ function P.EnsureKeymapFrame()
   f.TitleText:SetText("Your field guide")
   P.VisualFont(f.TitleText, 24, P.Visual.text)
   local subtitle = f:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-  subtitle:SetPoint("TOPLEFT", 24, -67)
+  subtitle:SetPoint("TOPLEFT", 24, -64)
+  subtitle:SetWidth(760)
+  subtitle:SetJustifyH("LEFT")
   subtitle:SetText("Every ability. Every binding.")
   P.VisualFont(subtitle, 11, P.Visual.muted)
+  f.subtitle = subtitle
   local close = CreateFrame("Button", nil, f, "UIPanelCloseButton")
   close:SetPoint("TOPRIGHT", -8, -8)
   close:SetScript("OnClick", function() f:Hide() end)
   f.CloseButton = close
-  P.VisualLine(f, P.Visual.edge, 24, -89)
+  f.filterChips = {}
+  local function chipTip(b)
+    b:SetScript("OnEnter", function(self)
+      GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+      GameTooltip:SetText(self.tipTitle or "", 1, 1, 1)
+      if self.tip then GameTooltip:AddLine(self.tip, 0.8, 0.8, 0.8, true) end
+      GameTooltip:Show()
+    end)
+    b:SetScript("OnLeave", function() GameTooltip:Hide() end)
+  end
+  local function makeChip(text, width, group, mode, tipTitle, tip)
+    local b = CreateFrame("Button", nil, f, "BackdropTemplate")
+    b:SetSize(width, 20)
+    P.VisualPanel(b, P.Visual.ink, P.Visual.edge)
+    local fs = b:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    fs:SetPoint("CENTER", 0, 0)
+    fs:SetText(text)
+    b.caption = fs
+    b.group, b.mode = group, mode
+    b.tipTitle, b.tip = tipTitle, tip
+    chipTip(b)
+    b:SetScript("OnClick", function(self)
+      P.EnsureDB()
+      if self.group == "filter" then SuperBindsDB.keymapFilter = self.mode
+      else SuperBindsDB.keymapForm = self.mode end
+      if P.RefreshKeymap then P.RefreshKeymap() end
+    end)
+    f.filterChips[#f.filterChips + 1] = b
+    return b
+  end
+  local filterLabel = f:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+  filterLabel:SetPoint("TOPLEFT", 24, -90)
+  filterLabel:SetText("FILTER")
+  P.VisualFont(filterLabel, 10, P.Visual.brass)
+  local cBindings = makeChip("Bindings", 78, "filter", "bindings",
+    "Bindings", "Abilities already on the console, with their keys.")
+  cBindings:SetPoint("LEFT", filterLabel, "RIGHT", 10, 0)
+  local cAll = makeChip("All spells", 84, "filter", "all",
+    "All spells", "Every active spell in your spellbook, after the form option. Crowd control, defensives, and self buffs are Blizzard's tags. Everything else stays on its spellbook tab.")
+  cAll:SetPoint("LEFT", cBindings, "RIGHT", 6, 0)
+  local cUnused = makeChip("Not used", 78, "filter", "unused",
+    "Not used", "Spellbook spells that are not on the bar.")
+  cUnused:SetPoint("LEFT", cAll, "RIGHT", 6, 0)
+  local formLabel = f:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+  formLabel:SetPoint("LEFT", cUnused, "RIGHT", 16, 0)
+  formLabel:SetText("FORM")
+  P.VisualFont(formLabel, 10, P.Visual.brass)
+  local cThis = makeChip("This form", 80, "form", "active",
+    "This form", "Only spells for the form you are in. A cat spell does not show as unused while you are in bear.")
+  cThis:SetPoint("LEFT", formLabel, "RIGHT", 10, 0)
+  local cEvery = makeChip("Every form", 88, "form", "every",
+    "Every form", "Ignore form. Not used means it is not placed on any form.")
+  cEvery:SetPoint("LEFT", cThis, "RIGHT", 6, 0)
+  P.VisualLine(f, P.Visual.edge, 24, -116)
   local scroll = CreateFrame("ScrollFrame", "SuperBindsKeymapScroll", f, "UIPanelScrollFrameTemplate")
-  scroll:SetPoint("TOPLEFT", 24, -102)
+  scroll:SetPoint("TOPLEFT", 24, -128)
   scroll:SetPoint("BOTTOMRIGHT", -42, 44)
   local content = CreateFrame("Frame", nil, scroll)
   content:SetSize(746, 1)
@@ -10288,6 +10371,388 @@ function P.KeymapRow(group, index)
   return row
 end
 
+function P.KeymapFormNow()
+  local form = P.DrawerForm and P.DrawerForm()
+  if not P.Text(form) then form = P.CurrentForm and P.CurrentForm() end
+  form = P.Text(form) or "caster"
+  return form
+end
+
+function P.KeymapFormLabel()
+  local form = P.KeymapFormNow()
+  return form:sub(1, 1):upper() .. form:sub(2)
+end
+
+function P.KeymapSpellUsable(id)
+  id = P.ID(id)
+  if not id then return false end
+  local function yes(usable, noPower)
+    if issecretvalue and (issecretvalue(usable) or issecretvalue(noPower)) then return true end
+    if usable then return true end
+    if noPower then return true end
+    return false
+  end
+  local api = C_Spell and C_Spell.IsSpellUsable
+  if type(api) == "function" then
+    local ok, usable, noPower = pcall(api, id)
+    if ok then return yes(usable, noPower) end
+  end
+  if type(IsUsableSpell) == "function" then
+    local ok, usable, noPower = pcall(IsUsableSpell, id)
+    if ok then return yes(usable, noPower) end
+  end
+  return true
+end
+
+function P.KeymapMarkSpell(used, keys, id, name, key)
+  id = P.ID(id)
+  name = P.Text(name)
+  if id then
+    used[id] = true
+    if key and keys and not keys[id] then keys[id] = key end
+  end
+  if name and name ~= "" then
+    local n = name:lower()
+    used[n] = true
+    if key and keys and not keys[n] then keys[n] = key end
+  end
+end
+
+function P.KeymapMarkAbility(used, keys, ab, key)
+  if type(ab) ~= "table" then return end
+  P.KeymapMarkSpell(used, keys, ab.id, ab.label or ab.name, key)
+  P.KeymapMarkSpell(used, keys, nil, ab.name, key)
+  local sp = ab.spell
+  if type(sp) == "number" then
+    P.KeymapMarkSpell(used, keys, sp, nil, key)
+  elseif type(sp) == "string" then
+    P.KeymapMarkSpell(used, keys, nil, sp, key)
+  elseif type(sp) == "table" then
+    for i = 1, #sp do
+      if type(sp[i]) == "number" then P.KeymapMarkSpell(used, keys, sp[i], nil, key)
+      elseif type(sp[i]) == "string" then P.KeymapMarkSpell(used, keys, nil, sp[i], key) end
+    end
+  end
+end
+
+function P.KeymapNoteRow(into, form, row)
+  if type(row) ~= "table" then return end
+  local function add(name)
+    if name == "*" then into.any = true return end
+    for _, key in ipairs(P.KeymapFormAliases(name)) do into.forms[key] = true end
+  end
+  if row.allBars then add("*")
+  elseif form then add(form)
+  elseif row.form == nil or row.form == false then add("*")
+  elseif type(row.form) == "string" then add(row.form)
+  elseif type(row.form) == "table" then
+    for i = 1, #row.form do add(row.form[i]) end
+  end
+  local function one(s)
+    if type(s) == "number" and s > 0 then into.ids[s] = true
+    elseif type(s) == "string" and s ~= "" then into.names[s:lower()] = true end
+  end
+  local sp = row.spell
+  if type(sp) == "table" then
+    for i = 1, #sp do one(sp[i]) end
+  else one(sp) end
+  one(row.label)
+  one(row.name)
+end
+
+function P.KeymapFormAliases(name)
+  name = P.Text(name)
+  if not name then return {} end
+  if name == "travel" or name == "flight" or name == "skyriding" then
+    return { "travel", "flight", "skyriding" }
+  end
+  return { name }
+end
+
+-- Pack rows say which forms a spell was written for. "*" fits every stance.
+function P.KeymapPackIndex()
+  local index = {}
+  local pack = P.CurrentPack and P.CurrentPack()
+  for _, fam in ipairs((pack and pack.families) or {}) do
+    if type(fam.bars) == "table" then
+      for form, spec in pairs(fam.bars) do
+        local into = { ids = {}, names = {}, forms = {}, any = false }
+        P.KeymapNoteRow(into, form, spec)
+        index[#index + 1] = into
+      end
+    elseif type(fam.bar) == "table" then
+      local into = { ids = {}, names = {}, forms = {}, any = false }
+      P.KeymapNoteRow(into, nil, fam.bar)
+      index[#index + 1] = into
+    end
+    for _, it in ipairs(fam.items or {}) do
+      local into = { ids = {}, names = {}, forms = {}, any = false }
+      P.KeymapNoteRow(into, nil, it)
+      index[#index + 1] = into
+    end
+  end
+  return index
+end
+
+function P.KeymapListedHere(index, id, name, form, activeOnly)
+  if not activeOnly then return true end
+  name = P.Text(name)
+  local n = name and name:lower() or nil
+  local listed, here = false, false
+  for i = 1, #index do
+    local row = index[i]
+    local hit = (id and row.ids[id]) or (n and row.names[n])
+    if hit then
+      listed = true
+      if row.any or row.forms[form] then here = true end
+    end
+  end
+  if here then return true end
+  -- Pack form tags win. A cat-only row stays out of bear even if the
+  -- usable check is loose. Spells the pack never mentions use that check.
+  if listed then return false end
+  return P.KeymapSpellUsable(id)
+end
+
+function P.KeymapScanSlots(used, form)
+  if type(GetActionInfo) ~= "function" then return end
+  for rel = 1, P.BarButtons() do
+    local slot = form and P.ActionSlot(rel, form) or P.LiveActionSlot(rel)
+    if slot then
+      local ok, kind, id = pcall(GetActionInfo, slot)
+      if ok and kind == "spell" then
+        id = P.ID(id)
+        if id then
+          local nm
+          if C_Spell and C_Spell.GetSpellName then
+            local named, got = pcall(C_Spell.GetSpellName, id)
+            if named then nm = P.Text(got) end
+          end
+          P.KeymapMarkSpell(used, nil, id, nm, nil)
+        end
+      end
+    end
+  end
+end
+
+function P.KeymapUsed(scope)
+  local used, keys = {}, {}
+  local function frameKey(frame)
+    if not frame then return nil end
+    return EffectiveKey(frame._sbBindId, frame._sbBindKey or frame._sbDefaultKey)
+  end
+  for _, tab in ipairs(consoleTabs) do
+    if tab:IsShown() then
+      local key = frameKey(tab)
+      P.KeymapMarkSpell(used, keys, tab.spellID, tab.tipText, key)
+      P.KeymapMarkAbility(used, keys, tab._ability, key)
+    end
+  end
+  for _, menu in pairs(menus) do
+    for _, b in ipairs(menu.buttons or {}) do
+      if b:IsShown() then
+        local key = frameKey(b)
+        P.KeymapMarkSpell(used, keys, b.spellID, b.tipText, key)
+        P.KeymapMarkAbility(used, keys, b._ability, key)
+      end
+    end
+  end
+  P.KeymapScanSlots(used, nil)
+  if scope == "every" then
+    local pack = P.CurrentPack and P.CurrentPack()
+    local seen = {}
+    local function scan(form)
+      form = P.Text(form)
+      if not form or seen[form] then return end
+      seen[form] = true
+      P.KeymapScanSlots(used, form)
+    end
+    scan("caster")
+    for name in pairs((pack and pack.actionBars) or {}) do scan(name) end
+    for _, row in ipairs(P.KeymapPackIndex()) do
+      for id in pairs(row.ids) do P.KeymapMarkSpell(used, nil, id, nil, nil) end
+      for name in pairs(row.names) do P.KeymapMarkSpell(used, nil, nil, name, nil) end
+    end
+    for _, custom in pairs((SuperBindsDB and SuperBindsDB.custom) or {}) do
+      for _, list in pairs((type(custom) == "table" and custom.addedForms) or {}) do
+        if type(list) == "table" then
+          for i = 1, #list do P.KeymapMarkAbility(used, nil, list[i], nil) end
+        end
+      end
+    end
+  end
+  return used, keys
+end
+
+function P.KeymapCatalogue()
+  local rows, seen = {}, {}
+  local api = C_SpellBook
+  if not api or not api.GetNumSpellBookSkillLines then return rows end
+  local bank = Enum and Enum.SpellBookSpellBank and Enum.SpellBookSpellBank.Player
+  local types = Enum and Enum.SpellBookItemType
+  local n = api.GetNumSpellBookSkillLines()
+  for line = 1, n do
+    local li = api.GetSpellBookSkillLineInfo(line)
+    if li and not li.offSpecID then
+      local lineName = P.Text(li.name) or "Spells"
+      local first = (li.itemIndexOffset or 0) + 1
+      local last = (li.itemIndexOffset or 0) + (li.numSpellBookItems or 0)
+      for j = first, last do
+        local it = P.BookInfo(j, bank)
+        if it and it.spellID and not it.isPassive and not it.isOffSpec then
+          local kind = it.itemType
+          local skip = types and kind and (
+            kind == types.Flyout or kind == types.FutureSpell or kind == types.Pet
+          )
+          local id = P.ID(it.spellID)
+          local name = P.Text(it.name)
+          if not name and id and C_Spell and C_Spell.GetSpellName then
+            local ok, nm = pcall(C_Spell.GetSpellName, id)
+            if ok then name = P.Text(nm) end
+          end
+          if not skip and id and name and name ~= "" and name ~= tostring(id) and not seen[id] then
+            seen[id] = true
+            local icon = 134400
+            if C_Spell and C_Spell.GetSpellTexture then
+              local ok, tex = pcall(C_Spell.GetSpellTexture, id)
+              if ok then tex = P.Public(tex) end
+              if ok and tex and tex ~= 0 and tex ~= "" then icon = tex end
+            end
+            rows[#rows + 1] = { id = id, name = name, icon = icon, line = lineName }
+          end
+        end
+      end
+    end
+  end
+  return rows
+end
+
+-- Blizzard's own flags. No per-class list. A spell with none of these
+-- stays on its spellbook tab (Guardian, General, a profession, …).
+function P.KeymapClientFlag(id, method)
+  local api = C_Spell and C_Spell[method]
+  if type(api) ~= "function" or not P.ID(id) then return false end
+  local ok, flag = pcall(api, id)
+  if not ok or flag == nil then return false end
+  if issecretvalue and issecretvalue(flag) then return false end
+  return flag and true or false
+end
+
+function P.KeymapClientGroup(id)
+  if P.KeymapClientFlag(id, "IsSpellCrowdControl") then return "Crowd control" end
+  if P.KeymapClientFlag(id, "IsExternalDefensive") then return "Defensive" end
+  if P.KeymapClientFlag(id, "IsSelfBuff") then return "Self buff" end
+end
+
+function P.KeymapSpellDisplay(filter)
+  local form = P.KeymapFormNow()
+  local activeOnly = not (SuperBindsDB and SuperBindsDB.keymapForm == "every")
+  local index = P.KeymapPackIndex()
+  local used, keys = P.KeymapUsed(activeOnly and "active" or "every")
+  local groups, order = {}, {}
+  local function add(title, entry)
+    local g = groups[title]
+    if not g then
+      g = {}
+      groups[title] = g
+      order[#order + 1] = title
+    end
+    g[#g + 1] = entry
+  end
+  for _, row in ipairs(P.KeymapCatalogue()) do
+    if P.KeymapListedHere(index, row.id, row.name, form, activeOnly) then
+      local n = row.name:lower()
+      local onBar = used[row.id] or used[n]
+      if filter ~= "unused" or not onBar then
+        add(P.KeymapClientGroup(row.id) or row.line, {
+          key = keys[row.id] or keys[n],
+          label = row.name,
+          icon = row.icon,
+          free = not onBar,
+        })
+      end
+    end
+  end
+  local display = {}
+  local function push(title)
+    local entries = groups[title]
+    if not entries then return end
+    table.sort(entries, function(a, b) return (a.label or "") < (b.label or "") end)
+    display[#display + 1] = { title = title, entries = entries }
+    groups[title] = nil
+  end
+  push("Crowd control")
+  push("Defensive")
+  push("Self buff")
+  for i = 1, #order do
+    push(order[i])
+  end
+  if #display == 0 then
+    display[1] = {
+      title = "Spells",
+      entries = {{
+        label = "Nothing matches this filter.",
+        icon = 134400,
+        free = true,
+      }},
+    }
+  end
+  return display
+end
+
+function P.KeymapDisplay()
+  local filter = SuperBindsDB and SuperBindsDB.keymapFilter or "bindings"
+  if filter == "all" or filter == "unused" then
+    return P.KeymapSpellDisplay(filter)
+  end
+  return P.LiveKeymapDisplay()
+end
+
+function P.PaintKeymapFilter()
+  local f = keymapFrame
+  if not f or not f.filterChips then return end
+  local filter = SuperBindsDB and SuperBindsDB.keymapFilter or "bindings"
+  local formMode = SuperBindsDB and SuperBindsDB.keymapForm or "active"
+  if filter ~= "all" and filter ~= "unused" then filter = "bindings" end
+  if formMode ~= "every" then formMode = "active" end
+  for _, chip in ipairs(f.filterChips) do
+    local on = (chip.group == "filter" and chip.mode == filter)
+      or (chip.group == "form" and chip.mode == formMode)
+    if chip.SetBackdropBorderColor then
+      chip:SetBackdropBorderColor(unpack(on and P.Visual.teal or P.Visual.edge))
+    end
+    if chip.SetBackdropColor then
+      chip:SetBackdropColor(unpack(on and P.Visual.panel or P.Visual.ink))
+    end
+    if chip.caption then
+      P.VisualFont(chip.caption, 10, on and P.Visual.teal or P.Visual.muted)
+    end
+  end
+  if f.subtitle then
+    local stance = P.KeymapFormLabel()
+    local text
+    if filter == "unused" and formMode == "active" then
+      text = "Not on the " .. stance .. " bar. Other forms stay out of this list."
+    elseif filter == "unused" then
+      text = "Not placed on any form."
+    elseif filter == "all" and formMode == "active" then
+      text = "Spells you can use in " .. stance .. ". Tagged rows use Blizzard's labels. The rest stay on their spellbook tab."
+    elseif filter == "all" then
+      text = "Every active spell. Tagged rows use Blizzard's labels. The rest stay on their spellbook tab."
+    else
+      text = "On the bar right now. All spells and Not used use the form option."
+    end
+    f.subtitle:SetText(text)
+  end
+end
+
+function P.RefreshKeymap()
+  local f = keymapFrame
+  if not f or not f:IsShown() then return end
+  P.PopulateKeymap(P.KeymapDisplay())
+  P.PaintKeymapFilter()
+end
+
 function P.PopulateKeymap(display)
   display = display or P.LiveKeymapDisplay()
   local f = P.EnsureKeymapFrame()
@@ -10304,7 +10769,11 @@ function P.PopulateKeymap(display)
       row:SetPoint("TOPLEFT", 12, -40 - (i - 1) * 35)
       row.icon:SetTexture(entry.icon or 134400)
       row.label:SetText(entry.label or "Ability")
-      row.key:SetText(entry.key and ShortKey(entry.key) or "CLICK")
+      local shown
+      if entry.key then shown = ShortKey(entry.key)
+      elseif entry.free then shown = "—"
+      else shown = "CLICK" end
+      row.key:SetText(shown)
       row.key:SetTextColor(unpack(entry.key and P.Visual.teal or P.Visual.muted))
       row:Show()
     end
@@ -10318,7 +10787,7 @@ function P.PopulateKeymap(display)
   local contentHeight = math.max(columnY[1], columnY[2], 1)
   f.content:SetHeight(contentHeight)
   local availableHeight = (UIParent:GetHeight() or 900) * 0.85
-  f:SetSize(812, math.min(contentHeight + 150, math.max(320, availableHeight)))
+  f:SetSize(812, math.min(contentHeight + 186, math.max(360, availableHeight)))
   -- Downscale the reference window on smaller displays, retaining its scroll area.
   f:SetScale(math.min(1, ((UIParent:GetWidth() or 1024) - 40) / 812))
   f.scroll:SetVerticalScroll(0)
@@ -10330,8 +10799,10 @@ function P.ShowKeymap()
     print("|cff0070ddSuper Binds:|r run |cffffffff/superbinds default|r to build the stock layout first.")
     return
   end
-  P.PopulateKeymap(P.LiveKeymapDisplay())
-  P.EnsureKeymapFrame():Show()
+  local f = P.EnsureKeymapFrame()
+  P.PopulateKeymap(P.KeymapDisplay())
+  P.PaintKeymapFilter()
+  f:Show()
 end
 
 function P.ToggleKeymap()
@@ -11680,7 +12151,7 @@ function P.BindPackBarKeys()
     if P.Text(key) and type(cmd) == "string" and cmd:find("^ACTIONBUTTON")
       and not P.IsMouseKey(key) then
       local have = GetBindingAction(key)
-      if not P.Text(have) then
+      if P._forcePackKeys or not P.Text(have) then
         pcall(SetBinding, key, cmd)
       end
     end
@@ -12067,11 +12538,9 @@ local function BuildEverything(bindNow)
     end
   end
 
-  -- SBA already covers these; never put them in a drawer.
-  if not P.IsFamilyMode() or P.HideAutoManaged() then
-    for nm in pairs(rotation) do PLACED_SPELLS[nm] = true end
-    for nm in pairs(STATIC_EXCLUDE) do PLACED_SPELLS[nm] = true end
-  end
+  -- Never-bind names stay out of every drawer. Rotation names must not
+  -- eat an explicit row (Recover's Rebirth is click-only and has no bind).
+  for nm in pairs(STATIC_EXCLUDE) do PLACED_SPELLS[nm] = true end
 
   -- Explicit additions count toward leftover coverage, without suppressing
   -- stock rows in another family just because a custom family renders first.
@@ -12109,7 +12578,9 @@ local function BuildEverything(bindNow)
     local resolved = {}
     for _, item in ipairs(fam.items) do
       local r = L.ResolveItem(item, bindNow)
-      if r and not (P.HideAutoManaged() and P.IsAutoManagedAbility(r)) then
+      -- Pack rows stay even when Assisted Combat also knows the spell.
+      -- The hide-auto setting only skips spellbook leftovers.
+      if r then
         resolved[#resolved + 1] = r
       end
     end
@@ -12118,7 +12589,8 @@ local function BuildEverything(bindNow)
     if fam.autoFill == "rest" then
       local names = {}
       for nm in pairs(BOOK) do
-        if not PLACED_SPELLS[nm] and not STATIC_EXCLUDE[nm] and not customCoverage[nm] then
+        local hideRotation = (not P.IsFamilyMode() or P.HideAutoManaged()) and rotation[nm]
+        if not PLACED_SPELLS[nm] and not STATIC_EXCLUDE[nm] and not customCoverage[nm] and not hideRotation then
           names[#names + 1] = nm
         end
       end
@@ -12529,8 +13001,7 @@ local function Apply(showKeymap)
   if P.PrintBindNotices then P.PrintBindNotices() end
   if SuperBindsPrompt then SuperBindsPrompt:Hide() end
   if showKeymap then
-    P.PopulateKeymap(P.LiveKeymapDisplay())
-    P.EnsureKeymapFrame():Show()
+    P.ShowKeymap()
   elseif keymapFrame then
     keymapFrame:Hide()
   end
@@ -12720,7 +13191,7 @@ boot:SetScript("OnEvent", function(self, event, unit, _, spellID)
     if P.pendingSpecPack then
       local n = P.pendingSpecPack
       P.pendingSpecPack = nil
-      if P.LoadProfile then P.LoadProfile(n) end
+      if P.LoadProfile then P.LoadProfile(n, true) end
     end
     if P.SyncNativeSBAHosts then P.SyncNativeSBAHosts() end
     P.RestoreChatKeys()
@@ -12769,6 +13240,9 @@ boot:SetScript("OnEvent", function(self, event, unit, _, spellID)
   end
   if event ~= "PLAYER_ENTERING_WORLD" and event ~= "SPELLS_CHANGED"
     and event ~= "PLAYER_SPECIALIZATION_CHANGED" then return end
+  if event == "PLAYER_SPECIALIZATION_CHANGED" and SuperBindsDB then
+    SuperBindsDB.profilePinned = nil
+  end
   P.SelectClassTheme()
   if busy or P.bootQueued then return end
   P.bootQueued = true
@@ -12824,6 +13298,7 @@ function RefreshLayout(automatic)
     end
     if P.RefreshNbaStrip then P.RefreshNbaStrip() end
     if P.SyncFormKeyDriver then P.SyncFormKeyDriver() end
+    if P.RefreshKeymap then P.RefreshKeymap() end
   end)
   busy = false
   if not ok then P.Report("Layout update failed: " .. tostring(err))
@@ -12901,7 +13376,7 @@ function P.SaveProfile(name)
   print("|cff0070ddSuper Binds:|r saved profile |cffffffff" .. name .. "|r")
 end
 
-function P.LoadProfile(name)
+function P.LoadProfile(name, auto)
   local cursorKind = P.CursorKind()
   if Locked() or busy or drag.active or P.dropRefreshQueued
     or (cursorKind and cursorKind ~= "secret") then
@@ -12962,6 +13437,7 @@ function P.LoadProfile(name)
   SuperBindsDB.activeProfile = name
   P.EnsureDB()
   if not Apply() then return false end
+  SuperBindsDB.profilePinned = auto ~= true
   P.RestorePositions()
   P.RefreshMoveChrome()
   print("|cff0070ddSuper Binds:|r loaded profile |cffffffff" .. name .. "|r")
@@ -12969,6 +13445,7 @@ function P.LoadProfile(name)
 end
 
 function P.FollowSpecPack()
+  if SuperBindsDB and SuperBindsDB.profilePinned then return false end
   local pack, name = P.PackForPlayerSpec()
   if not pack or not P.Text(name) then return false end
   if SuperBindsDB.activeProfile == name then return false end
@@ -12976,7 +13453,7 @@ function P.FollowSpecPack()
     P.pendingSpecPack = name
     return false
   end
-  return P.LoadProfile(name) == true
+  return P.LoadProfile(name, true) == true
 end
 
 function P.DeleteProfile(name)
@@ -13185,7 +13662,7 @@ function P.RegisterSettings()
     layout:AddInitializer(CreateSettingsListSectionHeaderInitializer("Console"))
   end
   addBool("hideAutoManaged", "Hide auto-managed abilities", defTrue,
-    "Hide click buttons that Assisted Combat already presses. Bound keys stay visible. Turn off to show leftover clicks.",
+    "Hide spellbook leftovers that Assisted Combat already presses. Spells this pack lists stay. Bound keys stay visible.",
     function() P.RebuildConsole() end)
 
   if type(CreateSettingsListSectionHeaderInitializer) == "function" and layout then
@@ -13223,7 +13700,7 @@ function P.RegisterSettings()
     layout:AddInitializer(CreateSettingsButtonInitializer(
       "Import Druid layout", "Import",
       function() if P.ImportDruid then P.ImportDruid() end end,
-      "The one shipped layout: Elune Prime (Guardian + Elune's Chosen). Druid only. Use Start clean first if you want no leftover overlays.", true))
+      "The shipped Elune Prime layout. Druid only. Ignores a saved profile of the same name. Start clean also deletes saved profiles.", true))
     layout:AddInitializer(CreateSettingsButtonInitializer(
       "Start clean", "Wipe overlay",
       function() if P.StartClean then P.StartClean() end end,
@@ -13235,7 +13712,7 @@ function P.RegisterSettings()
     layout:AddInitializer(CreateSettingsButtonInitializer(
       "Key map", "Open",
       function() if P.ShowKeymap then P.ShowKeymap() end end,
-      "Show the live key map window.", true))
+      "Show the key map. Filter can list every spell, or spells not on the bar, for this form or every form.", true))
     layout:AddInitializer(CreateSettingsButtonInitializer(
       "Hover-bind", "Start / Stop",
       function() if P.ToggleQuickKeybind then P.ToggleQuickKeybind() end end,
@@ -13355,8 +13832,33 @@ function P.ImportDruid()
     P.Report("The shipped import is Druid-only. The engine is class-agnostic — add a Profiles/<Class> pack for yours.")
     return false
   end
-  if P.LoadProfile then return P.LoadProfile("Elune Prime") end
-  return false
+  if Locked() or busy or GetCursorInfo() then
+    P.Report("Finish combat or dragging first.")
+    return false
+  end
+  local pack = P.FindPack and P.FindPack("Elune Prime")
+  if not pack then
+    P.Report("Elune Prime is not loaded.")
+    return false
+  end
+  -- Shipped pack, not a saved profile that happens to use the same name.
+  P.ClearFamilyKeys()
+  SuperBindsDB.custom = {}
+  SuperBindsDB.binds = {}
+  SuperBindsDB.barBinds = {}
+  SuperBindsDB.formBinds = {}
+  SuperBindsDB.mods = {}
+  SuperBindsDB.familyMode = pack.familyMode or pack.name
+  SuperBindsDB.familyRevision = 1
+  SuperBindsDB.activeProfile = pack.name
+  SuperBindsDB.profilePinned = true
+  P._forcePackKeys = true
+  local ok = Apply(true)
+  P._forcePackKeys = nil
+  if ok then
+    print("|cff0070ddSuper Binds:|r imported stock |cffffffffElune Prime|r. Saved profiles were left alone. |cffffffffStart clean|r wipes those too.")
+  end
+  return ok and true or false
 end
 
 function P.StartClean()
@@ -13387,9 +13889,11 @@ function P.StartClean()
     SuperBindsDB.familyMode = pack.familyMode or pack.name
     SuperBindsDB.familyRevision = 1
     SuperBindsDB.activeProfile = pack.name
+    SuperBindsDB.profilePinned = true
   else
     SuperBindsDB.activeProfile = nil
     SuperBindsDB.familyMode = nil
+    SuperBindsDB.profilePinned = nil
   end
   P._forcePackKeys = true
   if pack and Apply then Apply(true) end
@@ -13472,12 +13976,7 @@ function P.SlashBinds(msg)
     return
   end
   if cmd == "families" then
-    if Locked() or busy or P.OnSpecialBar() then P.Report("Leave combat and dismount first."); return end
-    local kind=P.CursorKind()
-    if kind and kind~="secret" then P.Report("Finish the cursor drag first."); return end
-    ScanBook()
-    P.ActivatePurposeFamilies(true)
-    Apply(true)
+    P.Report("Purpose families are not in this build.")
     return
   end
   if cmd == "save" then
@@ -13571,7 +14070,7 @@ SLASH_SBKEYMAP1 = "/keymap"
 SLASH_SBKEYMAP2 = "/km"
 SlashCmdList.SBKEYMAP = P.ToggleKeymap
 
-print("|cff0070ddSuper Binds:|r 0.5.117 loaded. |cffffffff/superbinds clean|r for a stock Druid layout. |cffffffff/superbinds load Elune Prime|r to import. |cffffffff/superbinds keys|r for reserved chords.")
+print("|cff0070ddSuper Binds:|r 0.5.121 loaded. |cffffffff/superbinds clean|r for a stock Druid layout. Import Druid is in the addon settings. |cffffffff/superbinds keys|r for reserved chords.")
 pcall(function() P.RegisterSettings() end)
 
 SuperBinds = P

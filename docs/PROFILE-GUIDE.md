@@ -110,7 +110,7 @@ Worked example (Haranir Guardian Elune, probe 2026-09-18): SBA = Lunar Beam, Man
 
 ## BIND (player, after the pack exists)
 
-`/superbinds bind` or the BIND key: drawers in a grid, hover, press a key or scroll. Esc / BIND again to finish. Gold lip moves BIND only. `/superbinds keys` reserved chords. `/keymap` field guide.
+`/superbinds bind` or the BIND key: drawers in a grid, hover, press a key or scroll. Esc / BIND again to finish. Gold lip moves BIND only. `/superbinds keys` reserved chords. `/keymap` field guide: Bindings, All spells, Not used; this form or every form. Crowd control, defensives, and self buffs use Blizzard’s flags (`0.5.121`). Everything else stays on its spellbook tab.
 
 Spellbook drop on a parent is `PlaceAction` on **this form’s** slot (no Shift). Shift-drag extras; Shift-drag a face off the bar empties that form’s slot. Add / hide / reorder extras are **this stance only** (`addedForms` / `hiddenForms` / `orderForms` on `DrawerForm` — travel extras are not caster’s). BIND a strip column writes `formBinds` for this form (`Shred cat → 2`); BIND a drawer extra does not steal that column’s `ACTIONBUTTON`.
 

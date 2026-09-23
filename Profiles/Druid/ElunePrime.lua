@@ -79,8 +79,8 @@ SuperBinds.RegisterProfile({
           bindKey="ALT-E",key="Alt-E",
           covers={"Rootwalking","Rootwalking: Return"},requires="Rootwalking",
           note="Haranir · cancels form"},
-        {spell={1822},label="Rake",target="harm",form="cat",note="bleed · stun from Prowl"},
-        {spell={1079},label="Rip",target="harm",form="cat",note="finisher bleed"},
+        {spell={1822},label="Rake",bindKey="1",target="harm",form="cat",note="bleed · stun from Prowl"},
+        {spell={1079},label="Rip",bindKey="4",target="harm",form="cat",note="finisher bleed"},
         {spell={213771,106785,213764},label="Swipe",target="harm",form={"cat","bear"},note="SBA · click"},
         {spell={77758,106832},label="Thrash",target="harm",form={"cat","bear"},note="SBA · click"},
       }},
@@ -103,8 +103,9 @@ SuperBinds.RegisterProfile({
         bear={slot=8,key="M5",bindKey="BUTTON5",spell={22842},label="Frenzied Regeneration"},
       },
       items={
-        {spell={22842},label="Frenzied Regeneration",form="bear",note="bear heal · click"},
-        {spell={8936},label="Regrowth",target="help",form="bear",note="click"},
+        {spell={22842},label="Frenzied Regeneration",form="bear",note="bear heal · M5"},
+        {spell={8936},label="Regrowth",bindKey="SHIFT-BUTTON5",target="help",form="bear",note="bear heal"},
+        {spell={2782},label="Remove Corruption",bindKey="ALT-BUTTON5",target="help",note="dispel"},
       }},
     {tag="T",title="Forms · wheel",caption="FORMS",
       bar={slot=3,key="WheelUp",bindKey="MOUSEWHEELUP",spell={5487},label="Bear Form",allBars=true},
@@ -127,7 +128,7 @@ SuperBinds.RegisterProfile({
       },
       items={
         {spell={61336},label="Survival Instincts",bindKey="SHIFT-C",note="big wall"},
-        {spell={22812},label="Barkskin",form="bear",note="wall · click"},
+        {spell={22812},label="Barkskin",bindKey="CTRL-C",form="bear",note="wall"},
       }},
     {tag="R",title="Empower · R",caption="EMPOWER",
       bars={
@@ -154,7 +155,6 @@ SuperBinds.RegisterProfile({
       items={
         {spell={20484,"Rebirth"},label="Rebirth",target="help",note="combat rez"},
         {spell={50769},label="Revive",note="out of combat"},
-        {spell={2782},label="Remove Corruption",target="help",note="dispel"},
         {spell={18960},label="Teleport: Moonglade"},
         {itemID=6948,label="Hearthstone"},
       }},
@@ -176,6 +176,8 @@ SuperBinds.RegisterProfile({
     BUTTON5={slot=8}, BUTTON4={slot=10},
     ["SHIFT-BUTTON4"]={spell={102401}},
     ["ALT-BUTTON4"]={spell={77761,77764,106898}},
+    ["SHIFT-BUTTON5"]={spell={8936}},
+    ["ALT-BUTTON5"]={spell={2782}},
     MOUSEWHEELUP={slot=3}, MOUSEWHEELDOWN={slot=4},
     ["SHIFT-MOUSEWHEELDOWN"]={slot=6},
   },

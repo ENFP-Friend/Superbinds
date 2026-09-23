@@ -1,4 +1,4 @@
-# SuperBinds 0.5.117
+# SuperBinds 0.5.121
 
 Repo folder: `C:\Users\Nick\Documents\Websites\SuperBinds`
 
@@ -29,7 +29,7 @@ Never delete SavedVariables while WoW is running.
 
 ## In game
 
-Chat should print `Super Binds: 0.5.117 loaded.` Out of combat:
+Chat should print `Super Binds: 0.5.121 loaded.` Out of combat:
 
 ```
 /superbinds clean
@@ -53,7 +53,7 @@ Ctrl-drag a face, right-drag, or drag `::` to move the console.
 
 ## Commands
 
-`/superbinds` apply; `clean`; `load Elune Prime`; `save`; `list`; `bind`; `map`; `options`; `keys`; `hide`; `show`. `/keymap` field guide. Alias `/sbinds`.
+`/superbinds` apply; `clean`; `load Elune Prime`; `save`; `list`; `bind`; `map`; `options`; `keys`; `hide`; `show`. `/keymap` field guide (filter: bindings, all spells, not used; this form or every form). Alias `/sbinds`. Recent patches: [`../README.md`](../README.md#since-05117).
 
 ## Do not
 
