@@ -18,7 +18,7 @@ Do not copy someone else's SavedVariables. Start from stock:
 
 1. **Close WoW.** Never delete WTF while the game is running.
 2. Delete `WTF/Account/<your account>/SavedVariables/SuperBinds.lua` and `SuperBinds.lua.bak` if they exist.
-3. Install this folder as `_retail_/Interface/AddOns/SuperBinds`.
+3. Install this folder as `_retail_/Interface/AddOns/SuperBinds`, and `SuperBinds_Druid` beside it. The Druid addon loads when the core loads. Restart the client once so WoW sees the new folder.
 4. Log in on a **Druid**. Disable **Shaman Binds** on that character if both are installed.
 5. `/reload`. Then either:
    - ESC → Options → AddOns → **Super Binds** → **Start clean** → **Import Druid layout**, or

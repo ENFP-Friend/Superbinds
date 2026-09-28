@@ -1,0 +1,15 @@
+## Interface: 120007, 120100
+## Title: Super Binds: Druid
+## Notes: Druid packs for Super Binds. Requires the core addon.
+## Author: ENFP-Friend
+## Version: 0.5.127
+## Dependencies: SuperBinds
+## Group: SuperBinds
+## Category: User Interface
+
+Guardian.lua
+ElunesChosen.lua
+ElunePrime.lua
+Feral.lua
+Balance.lua
+Load.lua

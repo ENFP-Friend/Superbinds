@@ -1,5 +1,5 @@
--- Super Binds 0.5.121 — class-agnostic port of the Shaman Binds 8.34 engine.
--- Packs live in Profiles/. Engine: native ACTIONBUTTON faces, BIND, drawers, shimmer.
+-- Super Binds 0.5.130 — class-agnostic port of the Shaman Binds 8.34 engine.
+-- Packs are sibling addons (SuperBinds_Druid). Engine: native ACTIONBUTTON faces, BIND, drawers, shimmer.
 SuperBindsDB = type(SuperBindsDB) == "table" and SuperBindsDB or {}
 
 local SBA_ID = 1229376
@@ -55,6 +55,63 @@ function P.DefaultPack()
 end
 function P.ClassHasPack()
   return P.DefaultPack() ~= nil
+end
+-- SuperBindsDB is account-wide. Action slots are per character, so a layout
+-- applied on one Druid is not on the bars of another. Track who applied.
+function P.CharKey()
+  local ok, guid = pcall(UnitGUID, "player")
+  if ok and type(guid) == "string" and guid ~= "" then return guid end
+  local okN, name, realm = pcall(UnitFullName, "player")
+  if okN and P.Text(name) then return name .. "-" .. (P.Text(realm) or "") end
+  return nil
+end
+function P.AppliedHere()
+  if not (SuperBindsDB and SuperBindsDB.applied) then return false end
+  local key = P.CharKey()
+  if not key then return false end
+  local set = SuperBindsDB.appliedChars
+  return type(set) == "table" and set[key] == true
+end
+function P.MarkApplied()
+  SuperBindsDB.applied = true
+  local key = P.CharKey()
+  if not key then return end
+  if type(SuperBindsDB.appliedChars) ~= "table" then SuperBindsDB.appliedChars = {} end
+  SuperBindsDB.appliedChars[key] = true
+end
+-- True only when the class token is known and no pack matches it.
+-- A nil class (login, before UnitClass) must not count as "no pack".
+function P.NoClassPack()
+  if not (P.PlayerClass and P.PlayerClass()) then return false end
+  return not (P.ClassHasPack and P.ClassHasPack())
+end
+-- Sibling addons (SuperBinds_Druid, later SuperBinds_Shaman) load because
+-- their TOC says Dependencies: SuperBinds. LoadAddOn only works for
+-- LoadOnDemand addons, so a normal class addon that is turned off stays off.
+-- A folder added while the client is open is invisible until a full restart.
+function P.LoadClassAddons()
+  if P._classAddonsTried then return end
+  if not (P.PlayerClass and P.PlayerClass()) then return end
+  P._classAddonsTried = true
+  local api = C_AddOns
+  if not api or type(api.GetNumAddOns) ~= "function" then return end
+  local info, loaded, demand = api.GetAddOnInfo, api.IsAddOnLoaded, api.IsAddOnLoadOnDemand
+  local pending
+  for i = 1, api.GetNumAddOns() do
+    local name = info and info(i)
+    if type(name) == "string" and name:sub(1, 11) == "SuperBinds_" then
+      if not (loaded and loaded(name)) then
+        if demand and demand(name) and api.LoadAddOn then pcall(api.LoadAddOn, name) end
+        if not (loaded and loaded(name)) then pending = pending or name end
+      end
+    end
+  end
+  if P.ClassHasPack and P.ClassHasPack() then return end
+  if pending then
+    print("|cff0070ddSuper Binds:|r " .. pending .. " is installed but not loaded. Enable it in the addon list.")
+  else
+    print("|cff0070ddSuper Binds:|r no pack for this class. Enable its class addon. Fully exit WoW if you just added that folder. /reload does not see a new addon.")
+  end
 end
 function P.PlayerSpecName()
   local name
@@ -942,6 +999,7 @@ function P.ApplyFactionChrome()
     end
     P.EnsureEndcapEyes()
     if P.UpdateEndcapEyes then P.UpdateEndcapEyes() end
+    if P.UpdateBindModeButton then P.UpdateBindModeButton() end
   end
 end
 
@@ -2027,6 +2085,29 @@ function P.MouseKeyCommand(key)
   end
 end
 
+-- On a page this addon does not write (flight, a mount, a vehicle), the face
+-- is whatever that key will cast. Spell overrides win, same as the bar driver.
+-- Otherwise the key is ACTIONBUTTON and the face is the live slot.
+function P.UnownedKeyCast(key)
+  if not (P.UseMountBar and P.UseMountBar()) then return nil end
+  key = P.Text(key)
+  if not key then return nil end
+  for _, row in ipairs(P.SkyridingExtraKeys and P.SkyridingExtraKeys() or {}) do
+    if row.key == key and P.Text(row.name) then return "spell", row.name end
+  end
+  local forms = P.CollectFormBinds and P.CollectFormBinds()
+  if forms and P.Text(forms[key]) then return "spell", forms[key] end
+  if P.IsMouseKey and P.IsMouseKey(key) then
+    local cmd = P.MouseKeyCommand(key)
+    if type(cmd) == "string" then
+      local spell = cmd:match("^SPELL (.+)$")
+      if spell then return "spell", spell end
+      local rel = tonumber(cmd:match("^ACTIONBUTTON(%d+)$"))
+      if rel then return "slot", rel end
+    end
+  end
+end
+
 -- Write both "shift-type4" and "shift-type-Button4". Midnight OnClick uses
 -- the button token "Button4"; older clients use the numeric suffix.
 function P.SetClickAttr(frame, prefix, suffix, attr, value)
@@ -2771,6 +2852,10 @@ function P.EnsureDB()
     db.totemScaleRev = 1
   end
   db.applied = db.applied == true
+  if type(db.appliedChars) ~= "table" then db.appliedChars = {} end
+  for k, v in pairs(db.appliedChars) do
+    if not P.Text(k) or v ~= true then db.appliedChars[k] = nil end
+  end
   if db.hideBar1 == nil then db.hideBar1 = true end
   db.hideBar1 = db.hideBar1 == true
   if db.hideConsoleMounted == nil then db.hideConsoleMounted = true end
@@ -4254,7 +4339,7 @@ qkbWatch:SetScript("OnEvent", function(_, event)
   HookQuickKeybindFrame()
   -- Reclaiming overrides can emit UPDATE_BINDINGS synchronously. Ignore our
   -- own writes here, before they can queue another next-frame reclaim.
-  if event ~= "UPDATE_BINDINGS" or busy or P.rebindingMouse or not SuperBindsDB.applied then return end
+  if event ~= "UPDATE_BINDINGS" or busy or P.rebindingMouse or not P.AppliedHere() then return end
   if P.bindingObserveQueued then return end
   P.bindingObserveQueued = true
   C_Timer.After(0, function()
@@ -7867,24 +7952,88 @@ end
 
 P.QKB_ICON = "Interface\\Icons\\INV_Misc_Key_03"
 
+function P.SkinBindButton(b)
+  if not b or b._sbBindSkinned then return end
+  b._sbBindSkinned = true
+  b:SetSize(44, 48)
+  P.VisualPanel(b, P.Visual.ink, P.Visual.brass)
+  local stone = b:CreateTexture(nil, "BACKGROUND", nil, 1)
+  stone:SetTexture("Interface\\DialogFrame\\UI-DialogBox-Background")
+  stone:SetPoint("TOPLEFT", 2, -2)
+  stone:SetPoint("BOTTOMRIGHT", -2, 2)
+  if P.Visual.stone then stone:SetVertexColor(unpack(P.Visual.stone)) end
+  b._sbStone = stone
+  local function hbar(edge, y)
+    local t = P.VisualTexture(b, "BORDER", P.Visual.brass)
+    t:SetPoint(edge .. "LEFT", 1, y)
+    t:SetPoint(edge .. "RIGHT", -1, y)
+    t:SetHeight(2)
+    return t
+  end
+  local function vbar(edge, x)
+    local t = P.VisualTexture(b, "BORDER", P.Visual.brass)
+    t:SetPoint("TOP" .. edge, x, -1)
+    t:SetPoint("BOTTOM" .. edge, x, 1)
+    t:SetWidth(2)
+    return t
+  end
+  b._sbRims = {
+    hbar("TOP", -1),
+    hbar("BOTTOM", 1),
+    vbar("LEFT", 1),
+    vbar("RIGHT", -1),
+  }
+  local shine = P.VisualTexture(b, "BORDER", P.Visual.shine or {0.93, 0.84, 0.62, 0.85})
+  shine:SetPoint("TOPLEFT", 3, -2)
+  shine:SetPoint("TOPRIGHT", -3, -2)
+  shine:SetHeight(1)
+  b._sbShine = shine
+  local rune = P.VisualTexture(b, "ARTWORK", P.Visual.teal)
+  rune:SetPoint("BOTTOMLEFT", 7, 6)
+  rune:SetPoint("BOTTOMRIGHT", -7, 6)
+  rune:SetHeight(1)
+  rune:SetAlpha(0.5)
+  b._sbRune = rune
+  local wash = P.VisualTexture(b, "ARTWORK", {
+    P.Visual.teal[1], P.Visual.teal[2], P.Visual.teal[3], 0.18,
+  })
+  wash:SetPoint("TOPLEFT", 3, -5)
+  wash:SetPoint("BOTTOMRIGHT", -3, 8)
+  wash:Hide()
+  b._sbWash = wash
+  local label = b:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+  label:SetPoint("CENTER", 0, 2)
+  P.VisualFont(label, 11, P.Visual.brass)
+  label:SetText("BIND")
+  b.label = label
+end
+
 function P.UpdateBindModeButton()
   local b = console and console._sbBindBtn
   if not b then return end
-  local on = InQuickKeybind()
-  if b.icon then
-    b.icon:SetVertexColor(1, 1, 1)
+  local on = InQuickKeybind and InQuickKeybind()
+  local hot = b._sbHot and true or false
+  local brass = P.Visual.brass or {0.68, 0.55, 0.35, 1}
+  local teal = P.Visual.teal or {0.27, 0.78, 0.76, 1}
+  local shine = P.Visual.shine or {0.93, 0.84, 0.62, 0.9}
+  local rim = on and teal or (hot and shine or brass)
+  if b.SetBackdropBorderColor then b:SetBackdropBorderColor(unpack(rim)) end
+  for _, t in ipairs(b._sbRims or {}) do P.TintTex(t, rim) end
+  if b._sbShine then P.TintTex(b._sbShine, on and teal or shine) end
+  if b._sbRune then
+    P.TintTex(b._sbRune, on and teal or brass)
+    b._sbRune:SetAlpha(on and 0.95 or (hot and 0.75 or 0.45))
   end
-  if b._sbGlow then b._sbGlow:SetShown(on) end
+  if b._sbWash then
+    if on then
+      P.TintTex(b._sbWash, {teal[1], teal[2], teal[3], 0.20})
+    end
+    b._sbWash:SetShown(on and true or false)
+  end
+  if b._sbStone and P.Visual.stone then b._sbStone:SetVertexColor(unpack(P.Visual.stone)) end
   if b.label then
     b.label:SetText(on and "DONE" or "BIND")
-    if on then
-      b.label:SetTextColor(unpack(P.Visual.teal))
-    else
-      b.label:SetTextColor(unpack(P.Visual.text))
-    end
-  end
-  if b.SetBackdropBorderColor then
-    b:SetBackdropBorderColor(unpack(on and P.Visual.teal or P.Visual.brass))
+    b.label:SetTextColor(unpack(on and teal or (hot and shine or brass)))
   end
   if b._sbHint then
     b._sbHint:ClearAllPoints()
@@ -7911,22 +8060,9 @@ function P.EnsureBindModeButton(owner)
   b:SetSize(TAB_H, TAB_H)
   b:SetFrameStrata("HIGH")
   b:SetFrameLevel(200)
+  P.SkinBindButton(b)
   P.WireBindMove(b)
   P.PlaceBindButton(b)
-  local icon = b:CreateTexture(nil, "ARTWORK")
-  b.icon = icon
-  DressIcon(b, icon)
-  icon:SetTexture(P.QKB_ICON)
-  local glow = b:CreateTexture(nil, "OVERLAY")
-  glow:SetAllPoints()
-  glow:SetColorTexture(0.27, 0.78, 0.76, 0.28)
-  glow:Hide()
-  b._sbGlow = glow
-  local label = b:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
-  label:SetPoint("BOTTOM", 0, 3)
-  P.VisualFont(label, 9, P.Visual.text, "OUTLINE")
-  label:SetText("BIND")
-  b.label = label
   local hint = owner:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
   hint:SetPoint("BOTTOM", owner, "TOP", 0, 10)
   P.VisualFont(hint, 11, P.Visual.teal)
@@ -7937,16 +8073,19 @@ function P.EnsureBindModeButton(owner)
     P.ToggleQuickKeybind()
   end)
   b:HookScript("OnEnter", function()
+    b._sbHot = true
+    if P.UpdateBindModeButton then P.UpdateBindModeButton() end
     local on = InQuickKeybind()
     P.ShowConsoleTooltip(b, {
       tipText = on and "Finish keybind" or "Quick keybind",
     }, {
       line = on
-        and "Click to leave bind mode. Escape also exits. Drag the gold lip to place this key."
-        or "Hover a console icon and press a key or scroll. Ctrl-Wheel and Ctrl-M4/M5 stay camera zoom. Drag the gold lip to place this key.",
+        and "Click to leave bind mode. Escape also exits. Drag the clasp to place this key."
+        or "Hover a console icon and press a key or scroll. Ctrl-Wheel and Ctrl-M4/M5 stay camera zoom. Drag the clasp to place this key.",
     })
   end)
   b:HookScript("OnLeave", function()
+    b._sbHot = false
     GameTooltip:Hide()
     P.UpdateBindModeButton()
   end)
@@ -8150,7 +8289,7 @@ function P.CommitBindPlace(b)
   b:SetPoint("BOTTOMLEFT", console, "BOTTOMLEFT", x, y)
 end
 
--- Click the key for Quick Keybind. The gold lip above it places BIND only.
+-- Click the seal for Quick Keybind. The clasp above it places BIND only.
 function P.WireBindMove(frame)
   if not frame then return end
   frame:EnableMouse(true)
@@ -8158,30 +8297,41 @@ function P.WireBindMove(frame)
   local handle = frame._sbDragHandle
   if not handle then
     handle = CreateFrame("Frame", "SuperBindsBindGrip", frame)
-    handle:SetHeight(10)
+    handle:SetHeight(14)
     local tex = handle:CreateTexture(nil, "OVERLAY")
-    tex:SetAllPoints()
-    tex:SetColorTexture(0.96, 0.90, 0.76, 0.70)
+    tex:SetSize(22, 4)
+    tex:SetPoint("CENTER", 0, -4)
+    tex:SetColorTexture(0.78, 0.64, 0.38, 0.95)
     handle.tex = tex
+    local lip = handle:CreateTexture(nil, "OVERLAY", nil, 1)
+    lip:SetSize(14, 1)
+    lip:SetPoint("TOP", tex, "TOP", 0, 0)
+    lip:SetColorTexture(0.96, 0.90, 0.76, 0.9)
+    handle.lip = lip
     handle:EnableMouse(true)
+    if handle.SetPropagateMouseClicks then handle:SetPropagateMouseClicks(false) end
     handle:SetScript("OnMouseDown", function(_, button)
       if button == "LeftButton" then P.BeginBindDrag(frame) end
     end)
     handle:SetScript("OnEnter", function()
-      tex:SetAlpha(1)
+      tex:SetColorTexture(0.93, 0.84, 0.62, 1)
+      lip:SetColorTexture(1, 0.96, 0.86, 1)
       P.ShowConsoleTooltip(handle, { tipText = "Move BIND" }, {
-        line = "Drag this lip to place the key. The console stays put. Click the key to bind.",
+        line = "Drag this clasp to place the key. The console stays put. Click the key to bind.",
       })
     end)
     handle:SetScript("OnLeave", function()
-      tex:SetAlpha(0.70)
+      tex:SetColorTexture(0.78, 0.64, 0.38, 0.95)
+      lip:SetColorTexture(0.96, 0.90, 0.76, 0.9)
       GameTooltip:Hide()
     end)
     frame._sbDragHandle = handle
   end
+  if frame.SetClipsChildren then frame:SetClipsChildren(false) end
   handle:ClearAllPoints()
-  handle:SetPoint("BOTTOMLEFT", frame, "TOPLEFT", 0, 2)
-  handle:SetPoint("BOTTOMRIGHT", frame, "TOPRIGHT", 0, 2)
+  handle:SetHeight(14)
+  handle:SetPoint("BOTTOMLEFT", frame, "TOPLEFT", 0, 0)
+  handle:SetPoint("BOTTOMRIGHT", frame, "TOPRIGHT", 0, 0)
   handle:SetFrameStrata("HIGH")
   handle:SetFrameLevel((frame:GetFrameLevel() or 200) + 8)
   handle:Show()
@@ -8202,6 +8352,13 @@ end
 function P.RefreshMoveChrome()
   if not console then return end
   if console._moving then P.StopConsoleMove() end
+  -- keymapFrame is a file local declared further down; this function sits
+  -- above it, so read the named frame instead of a global that is always nil.
+  local guide = _G.SuperBindsKeymap
+  if guide and guide:IsShown() then
+    if P.SetGuideBarPriority then P.SetGuideBarPriority(true) end
+    return
+  end
   console:SetFrameStrata("HIGH")
   console:SetFrameLevel(50)
   if console._sbGrip then
@@ -10183,7 +10340,8 @@ function P.EnsureKeymapFrame()
   f:RegisterForDrag("LeftButton")
   f:SetScript("OnDragStart", f.StartMoving)
   f:SetScript("OnDragStop", f.StopMovingOrSizing)
-  f:SetFrameStrata("HIGH")
+  f:SetFrameStrata("DIALOG")
+  f:SetFrameLevel(100)
   P.VisualPanel(f, P.Visual.ink, P.Visual.brass)
   AttachDropShadow(f)
   P.VisualLine(f, P.Visual.teal, 1, -1)
@@ -10273,8 +10431,47 @@ function P.EnsureKeymapFrame()
   P.VisualFont(hint, 10, P.Visual.muted)
   f.widgets = {}
   tinsert(UISpecialFrames, "SuperBindsKeymap")
+  f:HookScript("OnShow", function()
+    if P.SetGuideBarPriority then P.SetGuideBarPriority(true) end
+  end)
+  f:HookScript("OnHide", function()
+    if P.SetGuideBarPriority then P.SetGuideBarPriority(false) end
+  end)
   keymapFrame = f
   return f
+end
+
+-- The guide is DIALOG. The console and the Blizzard bar are HIGH and used to
+-- sit on top of it. Drop them while the guide is open, then put them back.
+function P.SetGuideBarPriority(open)
+  local function frames()
+    local list = { console, _G.MainActionBar, _G.MainMenuBar, _G.OverrideActionBar }
+    if console then
+      list[#list + 1] = console._sbGrip
+      list[#list + 1] = console._sbBindBtn
+      list[#list + 1] = console._sbRail
+    end
+    for _, m in pairs(menus or {}) do list[#list + 1] = m end
+    return list
+  end
+  if open then
+    P._guideBarHold = P._guideBarHold or {}
+    for _, frame in ipairs(frames()) do
+      if frame and frame.GetFrameStrata and not P._guideBarHold[frame] then
+        P._guideBarHold[frame] = frame:GetFrameStrata() or "HIGH"
+      end
+      if frame and frame.SetFrameStrata then pcall(frame.SetFrameStrata, frame, "LOW") end
+    end
+    return
+  end
+  local hold = P._guideBarHold
+  P._guideBarHold = nil
+  if type(hold) ~= "table" then return end
+  for frame, strata in pairs(hold) do
+    if frame and frame.SetFrameStrata and P.Text(strata) then
+      pcall(frame.SetFrameStrata, frame, strata)
+    end
+  end
 end
 
 
@@ -11597,9 +11794,12 @@ function P.ApplyConsoleMountedHide()
   if not c then return end
   P.WatchHUDMap()
   local mapOpen = P.HUDMapOpen()
+  local guideOpen = keymapFrame and keymapFrame:IsShown()
   if mapOpen then
     c:SetFrameStrata("BACKGROUND")
     if P.dropRail then P.dropRail:Hide() end
+  elseif guideOpen then
+    if P.SetGuideBarPriority then P.SetGuideBarPriority(true) end
   else
     c:SetFrameStrata("HIGH")
     c:SetFrameLevel(50)
@@ -12159,7 +12359,7 @@ function P.BindPackBarKeys()
 end
 
 function P.ReclaimMouseOverrides()
-  if Locked() or not SuperBindsDB.applied then return end
+  if Locked() or not P.AppliedHere() then return end
   P.EnsureBarDriver()
   P.RebuildOverrideList()
   P.FlushOverrides()
@@ -12231,7 +12431,7 @@ pcall(function()
   barPin:RegisterUnitEvent("UNIT_EXITED_VEHICLE", "player")
 end)
 barPin:SetScript("OnEvent", function()
-  if not SuperBindsDB.applied then return end
+  if not P.AppliedHere() then return end
   C_Timer.After(0, function()
     P.EnsureBarDriver()
     P.ApplyBar1Chrome()
@@ -12664,17 +12864,35 @@ local function BuildEverything(bindNow)
       end
     end
     if fam.bar and fam.bar.slot then
-      local abs = (P.LiveActionSlot and P.LiveActionSlot(fam.bar.slot)) or P.ActionSlot(fam.bar.slot, L.PackFormNow())
+      local rel = tonumber(fam.bar.slot)
+      local abs = (P.LiveActionSlot and P.LiveActionSlot(rel)) or P.ActionSlot(rel, L.PackFormNow())
       local native = P.NativeAbility(abs)
       local shapeshiftFace = P.AbilityLooksLikeShapeshift and P.AbilityLooksLikeShapeshift(fam.bar)
-      if native then
+      local faceKey = fam.bar.bindKey or fam.bar.key or slotKey
+      local castKind, castName = P.UnownedKeyCast(faceKey)
+      if P.UseMountBar and P.UseMountBar() and castKind == nil then
+        castKind, castName = "slot", rel
+      end
+      if castKind == "spell" then
+        local _, id = Known(castName)
+        primary = {
+          name = castName, label = castName, id = id,
+          icon = L.SpellIcon(id, castName), key = slotKey,
+          _sbSpellCast = castName,
+        }
+      elseif castKind == "slot" then
+        if native then
+          native.key = slotKey
+          native.sba = P.IsAssistedAbility(native) or nil
+          primary = native
+        else
+          primary = { empty = true, label = "", name = "", icon = 134400, key = slotKey }
+        end
+      elseif native then
         native.key = slotKey
         native.sba = P.IsAssistedAbility(native) or nil
         if shapeshiftFace then
           if P.AbilityLooksLikeShapeshift(native) then primary = native end
-        elseif P.UseMountBar and P.UseMountBar() then
-          local rel = tonumber(fam.bar.slot)
-          if rel == 1 or rel == 2 or rel == 7 then primary = native end
         else
           primary = native
         end
@@ -12701,7 +12919,17 @@ local function BuildEverything(bindNow)
     -- only fades ActionButton 1-7; do not disable their mouse.
     -- Shapeshifts are the same spell on every page, including skyriding.
     local shapeshiftFace = fam.bar and P.AbilityLooksLikeShapeshift and P.AbilityLooksLikeShapeshift(fam.bar)
-    if shapeshiftFace and primary and not L.Locked() then
+    if primary and primary._sbSpellCast and not L.Locked() then
+      tab:EnableMouse(true)
+      if tab.SetMouseClickEnabled then tab:SetMouseClickEnabled(true) end
+      tab:SetAttribute("type", "spell")
+      tab:SetAttribute("typerelease", "spell")
+      tab:SetAttribute("spell", primary._sbSpellCast)
+      tab:SetAttribute("relslot", nil)
+      tab:SetAttribute("action", nil)
+      tab:SetAttribute("shift-type1", "")
+      tab:SetAttribute("shift-typerelease1", "")
+    elseif shapeshiftFace and primary and not L.Locked() then
       tab:EnableMouse(true)
       if tab.SetMouseClickEnabled then tab:SetMouseClickEnabled(true) end
       tab:SetAttribute("type", "spell")
@@ -12990,7 +13218,7 @@ local function Apply(showKeymap)
 
 
   SuperBindsDB.display = display
-  SuperBindsDB.applied = true
+  P.MarkApplied()
 
   P.PrintSBA()
   local pack = P.CurrentPack and P.CurrentPack()
@@ -13090,7 +13318,7 @@ function P.AppendTrinketFamilies(families, trinkets)
 end
 
 function P.QueueTrinketRefresh()
-  if not SuperBindsDB.applied then return end
+  if not P.AppliedHere() then return end
   P.trinketRefreshPending = true
   if P.trinketRefreshQueued then return end
   P.trinketRefreshQueued = true
@@ -13148,6 +13376,7 @@ function P.ShowPrompt()
     if prompt then prompt:Hide() end
     Apply()
   end
+  if P._promptDismissed then return end
   if prompt then
     ReleasePromptKeys()
     prompt:Show()
@@ -13159,7 +13388,28 @@ function P.ShowPrompt()
   prompt:SetText("Apply Super Binds  (/superbinds)")
   prompt:SetFrameStrata("DIALOG")
   prompt:EnableKeyboard(false)
-  prompt:SetScript("OnClick", go)
+  prompt:RegisterForClicks("LeftButtonUp", "RightButtonUp")
+  -- Apply rewrites this character's bar 1 and keys. Right-click puts the
+  -- button away for this session so a character that does not want the
+  -- layout is not stuck with a button mid-screen.
+  prompt:SetScript("OnClick", function(_, button)
+    if button == "RightButton" then
+      P._promptDismissed = true
+      ReleasePromptKeys()
+      prompt:Hide()
+      print("|cff0070ddSuper Binds:|r not applied on this character. |cffffffff/superbinds|r applies it later.")
+      return
+    end
+    go()
+  end)
+  prompt:HookScript("OnEnter", function(self)
+    GameTooltip:SetOwner(self, "ANCHOR_TOP")
+    GameTooltip:SetText("Apply Super Binds")
+    GameTooltip:AddLine("Places the pack on this character's action bar 1 and form bars, sets its keys, and hides Blizzard bars 2-8.", 0.8, 0.8, 0.8, true)
+    GameTooltip:AddLine("Right-click to skip on this character for now.", 0.6, 0.6, 0.6, true)
+    GameTooltip:Show()
+  end)
+  prompt:HookScript("OnLeave", function() GameTooltip:Hide() end)
   prompt:SetScript("OnHide", ReleasePromptKeys)
   prompt:Show()
 end
@@ -13173,7 +13423,11 @@ boot:RegisterEvent("PLAYER_SPECIALIZATION_CHANGED")
 boot:RegisterEvent("UNIT_SPELLCAST_SUCCEEDED")
 boot:RegisterEvent("UPDATE_SHAPESHIFT_FORM")
 boot:SetScript("OnEvent", function(self, event, unit, _, spellID)
-  if P.ClassHasPack and not P.ClassHasPack() then return end
+  if P.LoadClassAddons then P.LoadClassAddons() end
+  if P.NoClassPack and P.NoClassPack() then
+    if console then console:Hide() end
+    return
+  end
   if event == "PLAYER_REGEN_DISABLED" then
     P.regenCombat = true
     P.pendingDragCleanup = drag.active or P.pendingDragCleanup
@@ -13217,7 +13471,7 @@ boot:SetScript("OnEvent", function(self, event, unit, _, spellID)
     -- Icons only. Bars were placed on apply; PlaceID on every shift steals the cursor.
     if P.ApplyEndcapArt then P.ApplyEndcapArt() end
     if P.RefreshNbaStrip then P.RefreshNbaStrip() end
-    if SuperBindsDB.applied then
+    if P.AppliedHere() then
       local barForm = PackFormNow()
       local drawerForm = P.DrawerForm and P.DrawerForm()
       -- Ground travel keeps caster slots. Drawers still change caster → travel.
@@ -13254,7 +13508,7 @@ boot:SetScript("OnEvent", function(self, event, unit, _, spellID)
     if P.FollowSpecPack and P.FollowSpecPack() then
       return
     end
-    if SuperBindsDB.applied then
+    if P.AppliedHere() then
       RefreshLayout(event ~= "PLAYER_SPECIALIZATION_CHANGED")
     elseif not Locked() then P.ShowPrompt() end
   end)
@@ -13269,6 +13523,11 @@ end)
 end
 
 function RefreshLayout(automatic)
+  if P.LoadClassAddons then P.LoadClassAddons() end
+  if P.NoClassPack and P.NoClassPack() then
+    if console then console:Hide() end
+    return false
+  end
   if Locked() or busy or drag.active or P.dropRefreshQueued then
     P.pendingRefresh = true
     return false
@@ -13446,6 +13705,9 @@ end
 
 function P.FollowSpecPack()
   if SuperBindsDB and SuperBindsDB.profilePinned then return false end
+  -- A character that never applied gets the prompt, not a silent apply.
+  -- Apply rewrites action slots and keys; that needs one click first.
+  if not P.AppliedHere() then return false end
   local pack, name = P.PackForPlayerSpec()
   if not pack or not P.Text(name) then return false end
   if SuperBindsDB.activeProfile == name then return false end
@@ -13478,7 +13740,7 @@ function P.ListProfiles()
   end
   table.sort(names)
   if #names == 0 then
-    print("|cff0070ddSuper Binds:|r no packs. Add a profile lua to the TOC.")
+    print("|cff0070ddSuper Binds:|r no packs. Enable the class addon (Super Binds: Druid).")
     return
   end
   local active = SuperBindsDB.activeProfile
@@ -13703,7 +13965,7 @@ function P.RegisterSettings()
       "The shipped Elune Prime layout. Druid only. Ignores a saved profile of the same name. Start clean also deletes saved profiles.", true))
     layout:AddInitializer(CreateSettingsButtonInitializer(
       "Start clean", "Wipe overlay",
-      function() if P.StartClean then P.StartClean() end end,
+      function() if P.ConfirmStartClean then P.ConfirmStartClean() end end,
       "Clears saved binds, per-form slots, drawers, console position, and named profiles. Loads the stock Druid pack. Out of combat. To wipe WTF too, close the game and delete SavedVariables/SuperBinds.lua.", true))
     layout:AddInitializer(CreateSettingsButtonInitializer(
       "Apply layout", "Apply",
@@ -13829,7 +14091,7 @@ end
 
 function P.ImportDruid()
   if P.PlayerClass and P.PlayerClass() ~= "DRUID" then
-    P.Report("The shipped import is Druid-only. The engine is class-agnostic — add a Profiles/<Class> pack for yours.")
+    P.Report("The shipped import is Druid-only. Enable Super Binds: Druid, or add that class addon.")
     return false
   end
   if Locked() or busy or GetCursorInfo() then
@@ -13861,6 +14123,25 @@ function P.ImportDruid()
   return ok and true or false
 end
 
+-- Start clean deletes every saved profile. One click in settings is not
+-- enough for that. The slash command is typed on purpose and skips this.
+function P.ConfirmStartClean()
+  if type(StaticPopupDialogs) ~= "table" or type(StaticPopup_Show) ~= "function" then
+    return P.StartClean()
+  end
+  StaticPopupDialogs["SUPERBINDS_START_CLEAN"] = StaticPopupDialogs["SUPERBINDS_START_CLEAN"] or {
+    text = "Super Binds: wipe saved binds, per-form slots, drawers, console position, and every saved profile, then load the stock pack?",
+    button1 = "Wipe",
+    button2 = CANCEL or "Cancel",
+    OnAccept = function() if P.StartClean then P.StartClean() end end,
+    timeout = 0,
+    whileDead = true,
+    hideOnEscape = true,
+    preferredIndex = 3,
+  }
+  StaticPopup_Show("SUPERBINDS_START_CLEAN")
+end
+
 function P.StartClean()
   if Locked() or busy or GetCursorInfo() then
     P.Report("Finish combat or dragging first.")
@@ -13879,6 +14160,7 @@ function P.StartClean()
   SuperBindsDB.macroNames = {}
   SuperBindsDB.hiddenSlots = {}
   SuperBindsDB.applied = nil
+  SuperBindsDB.appliedChars = {}
   SuperBindsDB.nbaCollapsed = nil
   local pack
   if P.PlayerClass and P.PlayerClass() == "DRUID" and P.FindPack then
@@ -13901,7 +14183,7 @@ function P.StartClean()
   if pack then
     print("|cff0070ddSuper Binds:|r started clean on |cffffffff" .. pack.name .. "|r. Overlay wiped. |cffffffff/reload|r if anything looks leftover.")
   else
-    print("|cff0070ddSuper Binds:|r overlay wiped. No shipped pack for this class — add a profile lua.")
+    print("|cff0070ddSuper Binds:|r overlay wiped. No shipped pack for this class — enable that class addon.")
   end
   return true
 end
@@ -14070,7 +14352,12 @@ SLASH_SBKEYMAP1 = "/keymap"
 SLASH_SBKEYMAP2 = "/km"
 SlashCmdList.SBKEYMAP = P.ToggleKeymap
 
-print("|cff0070ddSuper Binds:|r 0.5.121 loaded. |cffffffff/superbinds clean|r for a stock Druid layout. Import Druid is in the addon settings. |cffffffff/superbinds keys|r for reserved chords.")
+print("|cff0070ddSuper Binds:|r 0.5.130 loaded. |cffffffff/superbinds clean|r for a stock Druid layout. Import Druid is in the addon settings. |cffffffff/superbinds keys|r for reserved chords.")
 pcall(function() P.RegisterSettings() end)
 
 SuperBinds = P
+P._classLoad = CreateFrame("Frame")
+P._classLoad:RegisterEvent("PLAYER_LOGIN")
+P._classLoad:SetScript("OnEvent", function()
+  if P.LoadClassAddons then P.LoadClassAddons() end
+end)

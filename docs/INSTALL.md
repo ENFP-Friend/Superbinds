@@ -14,12 +14,21 @@ This folder should already be linked to WoW. If `dir` in AddOns is missing Super
 mklink /J "C:\Program Files (x86)\World of Warcraft\_retail_\Interface\AddOns\SuperBinds" "C:\Users\Nick\Documents\Websites\SuperBinds"
 ```
 
-`dir` in AddOns should show both:
+Druid packs are a second addon. The files live in this repo at `SuperBinds_Druid\`. WoW only loads a TOC that sits directly in AddOns, so that folder is junctioned beside the core:
+
+```bat
+mklink /J "C:\Program Files (x86)\World of Warcraft\_retail_\Interface\AddOns\SuperBinds_Druid" "C:\Users\Nick\Documents\Websites\SuperBinds\SuperBinds_Druid"
+```
+
+`dir` in AddOns should show:
 
 - `<JUNCTION> ShamanBinds [...]`
 - `<JUNCTION> SuperBinds [...]`
+- `<JUNCTION> SuperBinds_Druid [...]`
 
-Do not nest another `SuperBinds` folder inside this project. No extra Media download is required. Existing `Media\` TGAs (endcaps) load from this folder.
+A new addon folder is scanned when the client starts, not on `/reload`. Restart WoW once after creating the Druid junction. In the addon list, Super Binds: Druid sits under Super Binds. Disabling the core stops the Druid addon. Disabling only the Druid addon leaves the core with no pack and no console.
+
+Do not nest another `SuperBinds` folder inside this project. No extra Media download is required. Existing `Media\` TGAs (endcaps) load from the core folder.
 
 ## Start clean
 
@@ -29,7 +38,7 @@ Never delete SavedVariables while WoW is running.
 
 ## In game
 
-Chat should print `Super Binds: 0.5.121 loaded.` Out of combat:
+Chat should print `Super Binds: 0.5.127 loaded.` and `Super Binds: Druid packs 5.` Out of combat:
 
 ```
 /superbinds clean

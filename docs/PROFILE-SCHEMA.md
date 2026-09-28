@@ -1,6 +1,6 @@
 # Independent profile packs
 
-The TOC loads `SuperBinds.lua`, then `Profiles/Druid/Guardian.lua`, `ElunesChosen.lua`, `ElunePrime.lua`, `Feral.lua`, `Balance.lua`. Add another profile file to the TOC after the engine and call `SuperBinds.RegisterProfile(table)` from it. No engine edit is needed. Optional `hero=` (Druid Elune’s Chosen = 24) so two packs with the same `spec` do not race.
+The core TOC loads `SuperBinds.lua` only. Class packs are sibling addons. Druid is `SuperBinds_Druid` (`## Dependencies: SuperBinds`, no `LoadOnDemand`). It calls `SuperBinds.RegisterProfile(table)` from each pack file. Do not add pack files to `SuperBinds.toc`. Do not use `LoadWith` — that marks the class addon on-demand and the console can build before the packs exist. Optional `hero=` (Druid Elune’s Chosen = 24) so two packs with the same `spec` do not race.
 
 **Engine = how buttons, binds, form pages, and chrome work. Profile = which abilities, keys, and labels a class uses.**
 

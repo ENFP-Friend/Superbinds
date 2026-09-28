@@ -17,7 +17,7 @@ Source of truth, in order:
 1. **`/superbinds probe`** (spellbook lines, racials, shapeshifts, `GetRotationSpells`)
 2. **This guide** (how to group and key those spells)
 3. **`PROFILE-SCHEMA.md`** (how to write the lua table)
-4. Pack files already in `Profiles/` — examples only, not a template of family *names*
+4. Pack files in the class addon (`SuperBinds_Druid/`) — examples only, not a template of family *names*
 
 If a spell is not in the probe, it does not go on the bar. `Known()` will hide it anyway.
 
@@ -101,7 +101,7 @@ Treat **SBA presses** as what one Assisted Combat button will fire. Treat **acti
 6. Drawer: modifiers first (`bindKey`). **Do not leave a non-SBA active as click-only** except Recover. Hide SBA-covered clicks only when `useBlizzardSBA` is on; Elune/Guardian packs are `useBlizzardSBA=false` so the builder stays on E unless the player dropped SBA there.
 7. Racial actives get a **binding** (not click-only). Do not leave Thorn Bloom only in the Blizzard book.
 8. `neverSuggest` = shapeshifts (and anything else that must never be next-cast). `rotation` only uses probe spells. Unknown form → no suggestion.
-9. New file under `Profiles/<Class>/`, `RegisterProfile`, add to `SuperBinds.toc` after the engine. Set `spec`, optional `hero`, `default` so auto-load does not race.
+9. New file in the class addon (`SuperBinds_Druid/`, later `SuperBinds_Shaman/`), `RegisterProfile`. Do not add it to `SuperBinds.toc`. The class TOC uses `## Dependencies: SuperBinds` only — not `LoadOnDemand` or `LoadWith`. Set `spec`, optional `hero`, `default` so auto-load does not race.
 10. Do not put class spells in `SuperBinds.lua`. Do not edit live Shaman Binds GUI.
 
 Worked example (Haranir Guardian Elune, probe 2026-09-18): SBA = Lunar Beam, Mangle, Moonfire, Raze, Swipe, Thrash, plus Bear Form / Mark of the Wild / Convoke. Manual: Ironfur, Frenzied Regeneration, Skull Bash, Survival Instincts, Incarnation, Heart of the Wild, Thorn Bloom, Rootwalking, Typhoon, Ursol’s Vortex, Wild Charge. No Moonkin, no Maul (Raze instead). Captions can stay tank-like but **Raze** not Maul, **Lunar Beam** on empower, racials not totems.

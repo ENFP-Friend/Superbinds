@@ -1,0 +1,53 @@
+# SuperBinds core + class addons
+
+Do the **primary** first. Class addons only after the master loads alone and still boots. No `if class == "DRUID"` in the engine. Keep the folder name `SuperBinds` so `SuperBindsDB` / WTF stay valid.
+
+## 1. Primary (master)
+
+- [x] Cut `SuperBinds.toc` to engine only: `SuperBinds.lua` (no `Profiles/`).
+- [x] Confirm public API is enough for a sibling addon: `SuperBinds = P`, `RegisterProfile`, `Packs`, boot on `PLAYER_ENTERING_WORLD` (1.5s) so late packs still register. Packs only call `RegisterProfile`.
+- [x] If anything a pack needs is still `local` in `SuperBinds.lua`, put it on `P` now — not during the first class addon. Nothing else was required.
+- [x] Master TOC does **not** `Dependencies` / `OptionalDeps` a class addon (no cycles).
+- [x] SavedVariables stay `SuperBindsDB` on the master only.
+- [x] Slash `/superbinds`, BIND, console, form pages, SBA paint stay in the master.
+- [x] Engine still has no class spell lists. Profiles that lived in this TOC move out, they do not get inlined.
+- [ ] Prove: Druid files not in the TOC, restart client, master loads, no pack → no console (`ClassHasPack` false), no Lua error. Needs a login with the Druid addon disabled.
+- [x] Docs: INSTALL / PROFILE-GUIDE say packs are sibling addons, not files in this TOC.
+- [x] Junction / zip / git: `Interface/AddOns/SuperBinds/` remains this folder. Source of the class addon stays in this repo at `SuperBinds_Druid\` and is junctioned out to AddOns so the client sees a sibling.
+
+## 2. Class addons (after primary works)
+
+Each class is a **sibling** folder, not a nested dir.
+
+```
+Interface/AddOns/SuperBinds/            <- master
+Interface/AddOns/SuperBinds_Druid/      <- first class addon
+Interface/AddOns/SuperBinds_Shaman/     <- later
+```
+
+Each class TOC:
+
+```
+## Dependencies: SuperBinds
+## Group: SuperBinds
+```
+
+No `LoadOnDemand` and no `LoadWith`. `LoadWith` implies on-demand, and the console then builds before the packs exist. `Dependencies` alone loads the class addon at login, after the core, which is before the 1.5s boot.
+
+- [x] **Druid first:** `SuperBinds_Druid` with Guardian, Elune's Chosen, Elune Prime, Feral, Balance.
+- [x] `## Dependencies: SuperBinds` only. Not `LoadOnDemand` / `LoadWith` (that shipped the empty bar).
+- [x] Enable both addons. Restart the client once (a new folder is not seen on `/reload`). On a Druid: chat prints `Druid packs 5`, packs load, bar has buttons. Confirmed in game.
+- [ ] Disable `SuperBinds_Druid` only: master still loads, no Druid console, no error.
+- [ ] Disable master only: Druid addon must not load (Dependencies).
+- [ ] **Shaman after Druid:** move `Profiles/Shaman_*.lua` into `SuperBinds_Shaman` (they are not in the current TOC).
+- [ ] CurseForge / git zip both (or all) folders; mark SuperBinds as the required parent.
+- [ ] Junction both folders into AddOns when testing live.
+
+## Do not
+
+- Rename `SuperBinds`.
+- Put class spells in `SuperBinds.lua`.
+- Make the master depend on a class addon.
+- Nest `SuperBinds_Druid` inside `SuperBinds/`.
+- Split SavedVariables onto the class addon.
+- LoadOnDemand the first class addon without a master `LoadAddOn` call before `ClassHasPack`.

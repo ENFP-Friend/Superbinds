@@ -8,6 +8,8 @@ Public patch notes: [`../README.md`](../README.md#since-05117).
 - **0.5.119** — Manual load / Import / Start clean set `profilePinned`. Spec change clears it. Elune Prime: Rake `1`, Rip `4`, bear Regrowth `SHIFT-BUTTON5`, bear Barkskin `CTRL-C`, Remove Corruption `ALT-BUTTON5` on Heal (not Recover). Mouse chords are in `pack.hardware`. Do not bind Rip to `2` (trinket, and Skyward Ascent while mounted).
 - **0.5.120** — `/keymap` filter: bindings, all spells, not used. Form option defaults to the form you are in.
 - **0.5.121** — Spell groups: `IsSpellCrowdControl`, `IsExternalDefensive`, `IsSelfBuff`, else the spellbook skill line. Do not vendor a class/race spell database.
+- **0.5.122–0.5.129** — Flight faces follow what the key casts. Field guide sits above the bar. Druid packs moved to the sibling addon `SuperBinds_Druid` (`Dependencies: SuperBinds`, no `LoadWith`). BIND is a brass seal with a clasp.
+- **0.5.130** — `SuperBindsDB.appliedChars`: the layout is per character. A character that never applied gets the prompt (right-click skips it for the session); spec follow does not apply silently. Start clean in settings asks first. `RefreshMoveChrome` read a nil global `keymapFrame`; it now reads `SuperBindsKeymap`.
 
 Cursor’s open workspace is often **ShamanBinds**. Edit the sibling **SuperBinds** folder. Do not commit or push unless asked.
 
@@ -18,7 +20,7 @@ Product overview: [`../README.md`](../README.md). **Probe → pack:** [`PROFILE-
 | Piece | Where | Role |
 | --- | --- | --- |
 | Engine | `SuperBinds.lua` | Console, BIND, **multi-form native slots**, per-form hotkeys, SBA paint, pulse, endcap swap |
-| Druid packs | `Profiles/Druid/*.lua` | Spells, keys, `actionBars`, `bars` per form, `hero`, `theme.endcaps` |
+| Druid packs | `SuperBinds_Druid/` (sibling addon) | Spells, keys, `actionBars`, `bars` per form, `hero`, `theme.endcaps`. Loads with the core. |
 | Shipped art | `Media/*.tga` | What the game loads |
 | Packed PNG sources | `assets/DruidEndcap_{bear,cat,travel,horde}.png` | Cropped 80×120 / 90×120 sources |
 | Workshop drafts | ShamanBinds `assets/` (open Cursor workspace) | Rejected gens; not loaded by TOC |
