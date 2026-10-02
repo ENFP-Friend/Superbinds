@@ -18,6 +18,10 @@ https://github.com/user-attachments/assets/ca82af59-d3d5-4644-9b2f-74fd024eb204
 
 https://github.com/user-attachments/assets/d4cb291b-2684-4674-81a6-2b39eefb3a0f
 
+**Attack helper** — the pulse that times the next attack, so you press as the swing comes ready.
+
+https://github.com/user-attachments/assets/0554ebdd-a97d-4d26-8e2b-bad28d7c3c1f
+
 **Shaman Binds origin (WIP)** — Haranir Druid with totem-pole timers, the ultimate, menus and drawers. Not implemented in SuperBinds yet.
 
 https://github.com/user-attachments/assets/1eb62c11-db0c-4e98-ae85-c976e423f44c

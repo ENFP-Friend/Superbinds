@@ -56,6 +56,10 @@ https://github.com/user-attachments/assets/d4cb291b-2684-4674-81a6-2b39eefb3a0f
 
 **0.5.116** — Haranir Druid: every form bar, hotkey helper, GCD attack helper, and the cat attack helper. Blizzard’s assisted rotation omits bleeds, so they do not stack from that helper.
 
+https://github.com/user-attachments/assets/0554ebdd-a97d-4d26-8e2b-bad28d7c3c1f
+
+**Attack helper** — the pulse that times the next attack, so you press as the swing comes ready.
+
 https://github.com/user-attachments/assets/1eb62c11-db0c-4e98-ae85-c976e423f44c
 
 **Shaman Binds origin (WIP)** — totem-pole timers, ultimate, menus and drawers. SuperBinds is the port; those timers are **not** in SuperBinds yet.
