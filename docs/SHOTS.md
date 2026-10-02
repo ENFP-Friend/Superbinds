@@ -8,19 +8,19 @@ Product: [`../README.md`](../README.md). Endcap files: [`ART.md`](ART.md).
 
 **Adding and moving spells** — BIND, drawers, dropping abilities onto faces. Each form keeps its own slot memory (unshifted vs cat, bear, travel, and so on).
 
-<video src="https://github.com/user-attachments/assets/c9f4c4cc-6c1d-4e72-859e-208a43a627ba" controls muted playsinline></video>
+[![Adding and moving spells](shots/demo-adding.jpg)](shots/superbinds-adding-moving-spells.mp4)
 
 **Haranir bat form** — same keys, bat-form page and endcap.
 
-<video src="https://github.com/user-attachments/assets/094719ad-63a4-406e-a269-537c0861d8ae" controls muted playsinline></video>
+[![Haranir bat form](shots/demo-bat.jpg)](shots/superbinds-bat-form.mp4)
 
 **SuperBinds 0.5.116** — Druid so far: form bars, hotkey helper, GCD attack helper, cat attack helper. Blizzard’s assisted rotation omits bleeds, so they do not stack from that helper.
 
-<video src="https://github.com/user-attachments/assets/b01152df-cb3e-40d1-8ae5-09792e1d6304" controls muted playsinline></video>
+[![0.5.116 helpers](shots/demo-helpers.jpg)](shots/superbinds-05116-druid-helpers.mp4)
 
 **Shaman Binds origin (WIP)** — Haranir Druid with totem-pole timers, the ultimate, menus and drawers. Not implemented in SuperBinds yet.
 
-<video src="https://github.com/user-attachments/assets/64c0e38c-e97c-4613-a837-e4ed698446d7" controls muted playsinline></video>
+[![Shaman Binds origin](shots/demo-shaman.jpg)](shots/shamanbinds-wip-haranir-totems.mp4)
 
 ![Field guide — every ability and its key](shots/06-field-guide.png)
 

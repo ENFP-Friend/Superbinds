@@ -4,6 +4,20 @@ Class-agnostic Midnight action console. **One bar, one set of keys, a different 
 
 The engine is built for **every class**. Only a **Druid** layout ships. Shaman clips below are from a **different private addon** (Shaman Binds) that is **not** fully ported and is **not** what you get when you import Druid.
 
+## First login
+
+Install `SuperBinds` and the class addon for the character you are on (`SuperBinds_Druid`, `SuperBinds_Warrior`, and the rest) as sibling folders under `Interface/AddOns`, then restart the client once. A setup card previews the bar and asks you to Apply on that character only. Apply hides Blizzard bars 2–8. A class with no shipped spells keeps whatever is already on action bar 1. Other characters are left alone until they Apply too. `/superbinds tutorial` shows the card again.
+
+![Setup card — preview of the bar, Apply on this character](docs/shots/tutorial-setup.jpg)
+
+After Apply, two callouts sit on the real bar. The first is the buttons. The second is BIND, and MAP under it.
+
+![Coach mark on the bar — drag a spell onto a slot](docs/shots/tutorial-bar.jpg)
+
+MAP opens the field guide. Click a row and Quick Keybind Mode starts, so you can hover that row and press a key. The Blizzard window sits on the left.
+
+![Field guide with Quick Keybind Mode](docs/shots/field-guide-bind.jpg)
+
 ## Parked — read this first
 
 I am stopping WoW. This addon was written **with AI**. I could not afford frontier models, so a lot of the Lua is the kind of thing people call AI slop. Sorry. It has **not** been tested hard. **Expect bugs**, empty faces, weird binds, and leftover experiments.
@@ -12,7 +26,7 @@ If you do not want an AI-assisted addon, skip it. If you do, fork it and make it
 
 **Shaman totem timers / ultimates in the old footage are not SuperBinds.** That was a private, shaman-only prototype. SuperBinds is the class-agnostic rewrite. Druid is the one filled-in pack.
 
-## Start clean (do this)
+## Start clean (reset)
 
 Do not copy someone else's SavedVariables. Start from stock:
 
@@ -26,19 +40,19 @@ Do not copy someone else's SavedVariables. Start from stock:
 
 That wipes overlays, per-form slot memory, BIND chords, drawers, and console position, then loads the one shipped Druid pack (**Elune Prime**). `/superbinds reset` only restores pack keys and is not a full wipe.
 
-<video src="https://github.com/user-attachments/assets/c9f4c4cc-6c1d-4e72-859e-208a43a627ba" controls muted playsinline></video>
+[![Adding and moving spells](docs/shots/demo-adding.jpg)](docs/shots/superbinds-adding-moving-spells.mp4)
 
 **Adding and moving spells** — BIND, drawers, and dropping abilities onto faces. Each form keeps its own slot memory (unshifted vs cat, bear, travel, and so on).
 
-<video src="https://github.com/user-attachments/assets/094719ad-63a4-406e-a269-537c0861d8ae" controls muted playsinline></video>
+[![Haranir bat form](docs/shots/demo-bat.jpg)](docs/shots/superbinds-bat-form.mp4)
 
 **Haranir bat form** — same keys, bat-form page and endcap.
 
-<video src="https://github.com/user-attachments/assets/b01152df-cb3e-40d1-8ae5-09792e1d6304" controls muted playsinline></video>
+[![0.5.116 helpers](docs/shots/demo-helpers.jpg)](docs/shots/superbinds-05116-druid-helpers.mp4)
 
 **0.5.116** — Haranir Druid: every form bar, hotkey helper, GCD attack helper, and the cat attack helper. Blizzard’s assisted rotation omits bleeds, so they do not stack from that helper.
 
-<video src="https://github.com/user-attachments/assets/64c0e38c-e97c-4613-a837-e4ed698446d7" controls muted playsinline></video>
+[![Shaman Binds origin](docs/shots/demo-shaman.jpg)](docs/shots/shamanbinds-wip-haranir-totems.mp4)
 
 **Shaman Binds origin (WIP)** — totem-pole timers, ultimate, menus and drawers. SuperBinds is the port; those timers are **not** in SuperBinds yet.
 
