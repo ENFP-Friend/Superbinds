@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="docs/logo.jpg" alt="Super Binds" width="180">
+</p>
+
 # Super Binds
 
 Class-agnostic Midnight action console. **One bar, one set of keys, a different native action page per form.** **0.5.121.**
