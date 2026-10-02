@@ -35,7 +35,7 @@ Open https://authors.curseforge.com/ and log in. Create an author account if it 
 | Summary | see below |
 | Categories | Action Bars, Class, Combat |
 | License | All Rights Reserved |
-| Logo | `dist\screenshots\00-logo.jpg` |
+| Logo | `dist\screenshots\00-logo.png` |
 
 **Summary** (the one-line box):
 
