@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="docs/logo.jpg" alt="Super Binds" width="180">
+  <img src="docs/logo.png" alt="Super Binds" width="360">
 </p>
 
 # Super Binds
