@@ -40,19 +40,19 @@ Do not copy someone else's SavedVariables. Start from stock:
 
 That wipes overlays, per-form slot memory, BIND chords, drawers, and console position, then loads the one shipped Druid pack (**Elune Prime**). `/superbinds reset` only restores pack keys and is not a full wipe.
 
-[![Adding and moving spells](docs/shots/demo-adding.jpg)](docs/shots/superbinds-adding-moving-spells.mp4)
+https://github.com/user-attachments/assets/3cdeb784-c3e7-41b7-9bd4-6409eec09026
 
 **Adding and moving spells** — BIND, drawers, and dropping abilities onto faces. Each form keeps its own slot memory (unshifted vs cat, bear, travel, and so on).
 
-[![Haranir bat form](docs/shots/demo-bat.jpg)](docs/shots/superbinds-bat-form.mp4)
+https://github.com/user-attachments/assets/ca82af59-d3d5-4644-9b2f-74fd024eb204
 
 **Haranir bat form** — same keys, bat-form page and endcap.
 
-[![0.5.116 helpers](docs/shots/demo-helpers.jpg)](docs/shots/superbinds-05116-druid-helpers.mp4)
+https://github.com/user-attachments/assets/d4cb291b-2684-4674-81a6-2b39eefb3a0f
 
 **0.5.116** — Haranir Druid: every form bar, hotkey helper, GCD attack helper, and the cat attack helper. Blizzard’s assisted rotation omits bleeds, so they do not stack from that helper.
 
-[![Shaman Binds origin](docs/shots/demo-shaman.jpg)](docs/shots/shamanbinds-wip-haranir-totems.mp4)
+https://github.com/user-attachments/assets/1eb62c11-db0c-4e98-ae85-c976e423f44c
 
 **Shaman Binds origin (WIP)** — totem-pole timers, ultimate, menus and drawers. SuperBinds is the port; those timers are **not** in SuperBinds yet.
 
